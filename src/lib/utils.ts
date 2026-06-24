@@ -1,3 +1,9 @@
+export function formatNumberInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 export function formatIDR(cents: number): string {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",

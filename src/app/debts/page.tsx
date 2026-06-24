@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatIDR, formatDate } from "@/lib/utils";
+import { formatIDR, formatDate, formatNumberInput } from "@/lib/utils";
 import { Plus, X, CheckCircle, Pencil } from "lucide-react";
 
 type Debt = {
@@ -20,7 +20,7 @@ export default function DebtsPage() {
 
   const openEdit = (d: Debt) => {
     setEditId(d.id);
-    setForm({ name: d.name, type: d.type, amount: String(d.amount), remainingAmount: String(d.remainingAmount), dueDate: d.dueDate ? d.dueDate.split("T")[0] : "", notes: d.notes || "" });
+    setForm({ name: d.name, type: d.type, amount: formatNumberInput(String(d.amount)), remainingAmount: formatNumberInput(String(d.remainingAmount)), dueDate: d.dueDate ? d.dueDate.split("T")[0] : "", notes: d.notes || "" });
     setShowForm(true);
   };
 
@@ -94,8 +94,8 @@ export default function DebtsPage() {
             <button onClick={() => setForm({...form, type: "OWED"})} className={`flex-1 py-2 rounded-lg text-sm font-medium ${form.type === "OWED" ? "bg-green-100 text-green-700" : "bg-zinc-100 text-zinc-600"}`}>Dihutangi</button>
           </div>
           <input placeholder="Nama orang" value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
-          <input placeholder="Total nominal (Rp)" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
-          <input placeholder="Sisa (Rp) — kosongin kalo=total" value={form.remainingAmount} onChange={e => setForm({...form, remainingAmount: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
+          <input placeholder="Total nominal (Rp)" value={form.amount} onChange={e => setForm({...form, amount: formatNumberInput(e.target.value)})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
+          <input placeholder="Sisa (Rp) — kosongin kalo=total" value={form.remainingAmount} onChange={e => setForm({...form, remainingAmount: formatNumberInput(e.target.value)})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
           <input type="date" placeholder="Jatuh tempo" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
           <textarea placeholder="Catatan" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" rows={2} />
           <button onClick={submit} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Simpan</button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatIDR, getCurrentMonth, getCurrentYear, getMonthName } from "@/lib/utils";
+import { formatIDR, getCurrentMonth, getCurrentYear, getMonthName, formatNumberInput } from "@/lib/utils";
 import { Plus, X } from "lucide-react";
 
 type Category = { id: number; name: string; icon: string; color: string };
@@ -104,7 +104,7 @@ export default function BudgetPage() {
             <option value="">Pilih kategori</option>
             {expenseCats.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
           </select>
-          <input placeholder="Batas budget (Rp)" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
+          <input placeholder="Batas budget (Rp)" value={form.amount} onChange={e => setForm({...form, amount: formatNumberInput(e.target.value)})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
           <button onClick={submit} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">Simpan</button>
         </div>
       )}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { formatIDR, formatDate, getTodayStr } from "@/lib/utils";
+import { formatIDR, formatDate, getTodayStr, formatNumberInput } from "@/lib/utils";
 import { Trash2, Plus, X, Sparkles, FolderPlus, Pencil, Paperclip, FileText, Image as ImageIcon, Eye } from "lucide-react";
 
 type Category = { id: number; name: string; type: string; icon: string; color: string };
@@ -98,7 +98,7 @@ export default function TransactionsPage() {
   const openEdit = (tx: Transaction) => {
     setEditId(tx.id);
     setForm({
-      amount: String(tx.amount),
+      amount: formatNumberInput(String(tx.amount)),
       description: tx.description,
       date: tx.date.split("T")[0],
       type: tx.type,
@@ -165,7 +165,7 @@ export default function TransactionsPage() {
             <button onClick={() => setForm({...form, type: "EXPENSE"})} className={`flex-1 py-2 rounded-lg text-sm font-medium ${form.type === "EXPENSE" ? "bg-red-100 text-red-700" : "bg-zinc-100 text-zinc-600"}`}>Pengeluaran</button>
             <button onClick={() => setForm({...form, type: "INCOME"})} className={`flex-1 py-2 rounded-lg text-sm font-medium ${form.type === "INCOME" ? "bg-green-100 text-green-700" : "bg-zinc-100 text-zinc-600"}`}>Pemasukan</button>
           </div>
-          <input placeholder="Jumlah (Rp)" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
+          <input placeholder="Jumlah (Rp)" value={form.amount} onChange={e => setForm({...form, amount: formatNumberInput(e.target.value)})} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm" />
 
           <div className="relative">
             <input placeholder="Deskripsi" value={form.description} onChange={e => { setForm({...form, description: e.target.value}); suggestCategory(e.target.value); }} className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm pr-8" />

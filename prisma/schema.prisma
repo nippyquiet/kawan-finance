@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        Int           @id @default(autoincrement())
+  name      String
+  type      String        // INCOME or EXPENSE
+  icon      String?
+  color     String?
+  createdAt DateTime      @default(now())
+
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+model Transaction {
+  id              Int       @id @default(autoincrement())
+  amount          Int       // in cents (IDR)
+  description     String
+  date            DateTime
+  type            String    // INCOME or EXPENSE
+  isTransfer      Boolean   @default(false)
+  categoryId      Int?
+  category        Category? @relation(fields: [categoryId], references: [id])
+  attachmentPath  String?
+  attachmentType  String?   // IMAGE or DOCUMENT
+  createdAt       DateTime  @default(now())
+}
+
+model Debt {
+  id              Int       @id @default(autoincrement())
+  name            String
+  type            String    // OWE or OWED
+  amount          Int       // total nominal in cents
+  remainingAmount Int       // sisa in cents
+  dueDate         DateTime?
+  notes           String?
+  isPaid          Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+}
+
+model Investment {
+  id           Int       @id @default(autoincrement())
+  name         String
+  type         String    // STOCK, CRYPTO, REIT, GOLD, DEPOSIT, OTHER
+  units        Float
+  buyPrice     Float
+  currentPrice Float
+  notes        String?
+  createdAt    DateTime  @default(now())
+}
+
+model Budget {
+  id         Int       @id @default(autoincrement())
+  month      Int       // 1-12
+  year       Int
+  amount     Int       // budget limit in cents
+  categoryId Int
+  category   Category  @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime  @default(now())
+
+  @@unique([month, year, categoryId])
+}

@@ -1,7 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Emoji mapper for new categories
 const EMOJI_MAP: Record<string, string> = {
   bensin: "⛽", bbm: "⛽", parkir: "🅿️", tol: "🛣️",
   gojek: "🛵", grab: "🛵", ojek: "🛵", taksi: "🚕",
@@ -28,31 +27,20 @@ function suggestIcon(name: string): string {
 
 export async function GET() {
   const categories = await prisma.category.findMany({ orderBy: { type: "asc" } });
-  return Response.json(categories);
+  const response = NextResponse.json(categories);
+  response.headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+  return response;
 }
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-
-  // Check if category already exists
   const existing = await prisma.category.findFirst({
-    where: {
-      name: { equals: body.name },
-      type: body.type || "EXPENSE",
-    },
+    where: { name: { equals: body.name }, type: body.type || "EXPENSE" },
   });
-  if (existing) {
-    return Response.json(existing, { status: 200 });
-  }
-
+  if (existing) return Response.json(existing, { status: 200 });
   const icon = body.icon || suggestIcon(body.name);
   const category = await prisma.category.create({
-    data: {
-      name: body.name,
-      type: body.type || "EXPENSE",
-      icon,
-      color: body.color || "#6b7280",
-    },
+    data: { name: body.name, type: body.type || "EXPENSE", icon, color: body.color || "#6b7280" },
   });
   return Response.json(category, { status: 201 });
 }

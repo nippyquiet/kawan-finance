@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
@@ -17,15 +17,12 @@ export async function GET(request: NextRequest) {
 
   if (pocketId) where.pocketId = parseInt(pocketId);
 
-  // Date filtering: prioritize dateFrom/dateTo over month/year
   if (dateFrom || dateTo) {
     where.date = {};
     if (dateFrom) where.date.gte = new Date(dateFrom);
     if (dateTo) where.date.lt = new Date(dateTo);
   } else {
-    const startDate = new Date(y, m - 1, 1);
-    const endDate = new Date(y, m, 1);
-    where.date = { gte: startDate, lt: endDate };
+    where.date = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
   }
 
   const transactions = await prisma.transaction.findMany({
@@ -34,24 +31,25 @@ export async function GET(request: NextRequest) {
     orderBy: { date: "desc" },
   });
 
-  const totalIncome = transactions
-    .filter((t) => t.type === "INCOME")
-    .reduce((sum, t) => sum + t.amount, 0);
+  // Compute totals in memory (single pass through already-fetched data)
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (const t of transactions) {
+    if (t.type === "INCOME") totalIncome += t.amount;
+    else totalExpense += t.amount;
+  }
 
-  const totalExpense = transactions
-    .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const balance = totalIncome - totalExpense;
-
-  return Response.json({
+  const response = NextResponse.json({
     transactions,
     totalIncome,
     totalExpense,
-    balance,
+    balance: totalIncome - totalExpense,
     month: m,
     year: y,
   });
+
+  response.headers.set("Cache-Control", "public, max-age=5, stale-while-revalidate=30");
+  return response;
 }
 
 export async function POST(request: NextRequest) {

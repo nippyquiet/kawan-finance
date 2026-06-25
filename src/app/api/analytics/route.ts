@@ -1,87 +1,84 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { unstable_cache } from "next/cache";
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const pocketId = searchParams.get("pocketId");
-
-  const wherePocket = pocketId ? { pocketId: parseInt(pocketId) } : {};
+async function getAnalytics(pocketId: number | null) {
+  const wherePocket = pocketId ? { pocketId } : {};
 
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
-  // Current month stats
-  const startThisMonth = new Date(currentYear, currentMonth - 1, 1);
-  const endThisMonth = new Date(currentYear, currentMonth, 1);
-  const thisMonthTx = await prisma.transaction.findMany({
-    where: { ...wherePocket, date: { gte: startThisMonth, lt: endThisMonth } },
-  });
-  const thisIncome = thisMonthTx.filter(t => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
-  const thisExpense = thisMonthTx.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const sixMonthsAgo = new Date(currentYear, currentMonth - 6, 1);
+  const endOfCurrentMonth = new Date(currentYear, currentMonth, 1);
 
-  // Last 6 months trend
+  // Single query for all recent transactions
+  const allRecentTx = await prisma.transaction.findMany({
+    where: { ...wherePocket, date: { gte: sixMonthsAgo, lt: endOfCurrentMonth } },
+    select: { id: true, amount: true, type: true, date: true, categoryId: true },
+  });
+
+  const byMonth: Record<string, { income: number; expense: number }> = {};
+  const catSpending: Record<number, number> = {};
+
+  for (const tx of allRecentTx) {
+    const m = `${tx.date.getFullYear()}-${tx.date.getMonth() + 1}`;
+    if (!byMonth[m]) byMonth[m] = { income: 0, expense: 0 };
+    if (tx.type === "INCOME") byMonth[m].income += tx.amount;
+    else { byMonth[m].expense += tx.amount; if (tx.categoryId) catSpending[tx.categoryId] = (catSpending[tx.categoryId] || 0) + tx.amount; }
+  }
+
   const monthlyTrend = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(currentYear, currentMonth - 1 - i, 1);
-    const m = d.getMonth() + 1;
-    const y = d.getFullYear();
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 1);
-    const txs = await prisma.transaction.findMany({
-      where: { ...wherePocket, date: { gte: start, lt: end } },
-    });
-    const income = txs.filter(t => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
-    const expense = txs.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
-    monthlyTrend.push({ month: m, year: y, income, expense, net: income - expense });
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+    const data = byMonth[key] || { income: 0, expense: 0 };
+    monthlyTrend.push({ month: d.getMonth() + 1, year: d.getFullYear(), income: data.income, expense: data.expense, net: data.income - data.expense });
   }
 
-  // Top spending categories this month
-  const catSpending: Record<number, { name: string; icon: string; total: number }> = {};
-  for (const tx of thisMonthTx.filter(t => t.type === "EXPENSE")) {
-    if (tx.categoryId) {
-      if (!catSpending[tx.categoryId]) {
-        catSpending[tx.categoryId] = { name: "", icon: "", total: 0 };
-      }
-      catSpending[tx.categoryId].total += tx.amount;
-    }
-  }
-  // Get category names
+  const thisMonthKey = `${currentYear}-${currentMonth}`;
+  const thisMonthData = byMonth[thisMonthKey] || { income: 0, expense: 0 };
+
   const catIds = Object.keys(catSpending).map(Number);
+  const catMap: Record<number, { name: string; icon: string }> = {};
   if (catIds.length > 0) {
-    const cats = await prisma.category.findMany({ where: { id: { in: catIds } } });
-    for (const cat of cats) {
-      if (catSpending[cat.id]) {
-        catSpending[cat.id].name = cat.name;
-        catSpending[cat.id].icon = cat.icon || "📌";
-      }
-    }
+    const cats = await prisma.category.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true, icon: true } });
+    for (const c of cats) catMap[c.id] = { name: c.name, icon: c.icon || "📌" };
   }
-  const topCategories = Object.entries(catSpending)
-    .map(([id, c]) => ({ id: parseInt(id), ...c }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+  const topCategories = Object.entries(catSpending).sort(([, a], [, b]) => b - a).slice(0, 5)
+    .map(([id, total]) => ({ id: parseInt(id), total, name: catMap[parseInt(id)]?.name || "", icon: catMap[parseInt(id)]?.icon || "📌" }));
 
-  // Budget stats
-  const budgets = await prisma.budget.findMany({
-    where: { ...wherePocket, month: currentMonth, year: currentYear },
-    include: { category: true },
-  });
+  const budgets = await prisma.budget.findMany({ where: { ...wherePocket, month: currentMonth, year: currentYear }, select: { amount: true } });
   const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0);
-  const budgetSpent = thisMonthTx
-    .filter(t => t.type === "EXPENSE" && t.categoryId)
-    .reduce((s, t) => s + t.amount, 0);
 
-  // Total balance (pocket balance + all time net)
-  const allTxs = await prisma.transaction.findMany({ where: wherePocket });
-  const allTimeIncome = allTxs.filter(t => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
-  const allTimeExpense = allTxs.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const [allTimeIncome, allTimeExpense] = await Promise.all([
+    prisma.transaction.aggregate({ where: { ...wherePocket, type: "INCOME" }, _sum: { amount: true } }),
+    prisma.transaction.aggregate({ where: { ...wherePocket, type: "EXPENSE" }, _sum: { amount: true } }),
+  ]);
 
-  return Response.json({
-    currentMonth: { income: thisIncome, expense: thisExpense, net: thisIncome - thisExpense },
+  return {
+    currentMonth: { income: thisMonthData.income, expense: thisMonthData.expense, net: thisMonthData.income - thisMonthData.expense },
     monthlyTrend,
     topCategories,
-    budget: { total: budgetTotal, spent: budgetSpent, remaining: budgetTotal - budgetSpent },
-    allTime: { income: allTimeIncome, expense: allTimeExpense, net: allTimeIncome - allTimeExpense },
-  });
+    budget: { total: budgetTotal, spent: thisMonthData.expense, remaining: budgetTotal - thisMonthData.expense },
+    allTime: { income: allTimeIncome._sum.amount || 0, expense: allTimeExpense._sum.amount || 0, net: (allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0) },
+  };
+}
+
+const getCachedAnalytics = unstable_cache(
+  async (pocketId: number | null) => getAnalytics(pocketId),
+  ["analytics"],
+  { revalidate: 15, tags: ["analytics"] }
+);
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const pocketId = searchParams.get("pocketId");
+  const pid = pocketId ? parseInt(pocketId) : null;
+
+  const data = await getCachedAnalytics(pid);
+
+  const response = NextResponse.json(data);
+  response.headers.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");
+  return response;
 }

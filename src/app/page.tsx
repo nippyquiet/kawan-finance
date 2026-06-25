@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePocket } from "@/lib/PocketContext";
 import { formatIDR } from "@/lib/utils";
 import { ArrowUpRight, ArrowDownRight, PiggyBank, TrendingUp, Wallet } from "lucide-react";
+import useSWR from "swr";
 import Link from "next/link";
 
 type Analytics = {
@@ -14,29 +14,31 @@ type Analytics = {
   allTime: { income: number; expense: number; net: number };
 };
 
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
 export default function Home() {
   const { activePocket } = usePocket();
-  const [data, setData] = useState<Analytics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useSWR<Analytics>(
+    activePocket ? `/api/analytics?pocketId=${activePocket.id}` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 5000 }
+  );
 
-  useEffect(() => {
-    if (!activePocket) return;
-    setLoading(true);
-    fetch(`/api/analytics?pocketId=${activePocket.id}`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [activePocket]);
+  if (isLoading) return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-32 bg-zinc-200 rounded-2xl" />
+      <div className="grid grid-cols-3 gap-3">
+        {[1,2,3].map(i => <div key={i} className="h-20 bg-zinc-100 rounded-xl" />)}
+      </div>
+      <div className="h-48 bg-zinc-100 rounded-xl" />
+    </div>
+  );
 
-  if (loading) return <div className="text-center py-12 text-zinc-400 text-sm">Memuat data...</div>;
   if (!data) return <div className="text-center py-12 text-zinc-400 text-sm">Gagal memuat data</div>;
 
   const { currentMonth, monthlyTrend, topCategories, budget } = data;
-  const maxTrend = Math.max(...monthlyTrend.map(m => Math.max(m.income, m.expense, 1)));
-
-  const barW = Math.max(20, Math.min(40, 180 / monthlyTrend.length));
+  const maxTrend = Math.max(...monthlyTrend.map(m => Math.max(m.income, m.expense, 1)), 1);
 
   return (
     <div className="space-y-5">
@@ -87,22 +89,8 @@ export default function Home() {
           {monthlyTrend.map((m, i) => (
             <div key={i} className="flex flex-col items-center gap-1 flex-1">
               <div className="flex flex-col items-center relative w-full" style={{ height: "140px" }}>
-                {/* Income bar */}
-                <div
-                  className="w-full bg-emerald-400 rounded-t-sm transition-all"
-                  style={{
-                    height: `${Math.max(2, (m.income / maxTrend) * 100)}px`,
-                    opacity: 0.85,
-                  }}
-                />
-                {/* Expense bar (overlay) */}
-                <div
-                  className="w-full bg-red-400 rounded-t-sm transition-all -mt-1"
-                  style={{
-                    height: `${Math.max(2, (m.expense / maxTrend) * 100)}px`,
-                    opacity: 0.75,
-                  }}
-                />
+                <div className="w-full bg-emerald-400 rounded-t-sm" style={{ height: `${Math.max(2, (m.income / maxTrend) * 100)}px`, opacity: 0.85 }} />
+                <div className="w-full bg-red-400 rounded-t-sm -mt-1" style={{ height: `${Math.max(2, (m.expense / maxTrend) * 100)}px`, opacity: 0.75 }} />
               </div>
               <span className="text-[10px] text-zinc-400 font-medium">{MONTHS[m.month - 1]}</span>
             </div>
@@ -114,7 +102,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Budget Ringkasan */}
+      {/* Budget */}
       {budget.total > 0 && (
         <div className="bg-white rounded-xl border border-zinc-100 p-4">
           <div className="flex items-center justify-between mb-2">
@@ -128,10 +116,8 @@ export default function Home() {
             <span className="font-medium">{formatIDR(budget.spent)} / {formatIDR(budget.total)}</span>
           </div>
           <div className="h-2.5 bg-zinc-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${budget.spent > budget.total ? "bg-red-500" : "bg-blue-500"}`}
-              style={{ width: `${Math.min(100, (budget.spent / Math.max(budget.total, 1)) * 100)}%` }}
-            />
+            <div className={`h-full rounded-full ${budget.spent > budget.total ? "bg-red-500" : "bg-blue-500"}`}
+              style={{ width: `${Math.min(100, (budget.spent / Math.max(budget.total, 1)) * 100)}%` }} />
           </div>
         </div>
       )}
@@ -141,7 +127,7 @@ export default function Home() {
         <div className="bg-white rounded-xl border border-zinc-100 p-4">
           <h3 className="font-semibold text-sm mb-3">Kategori Teratas</h3>
           <div className="space-y-3">
-            {topCategories.map((cat, i) => {
+            {topCategories.map((cat) => {
               const pct = currentMonth.expense > 0 ? (cat.total / currentMonth.expense) * 100 : 0;
               return (
                 <div key={cat.id}>

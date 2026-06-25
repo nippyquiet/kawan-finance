@@ -6,6 +6,7 @@ import { I18nProvider } from "@/lib/i18n";
 import { PocketProvider } from "@/lib/PocketContext";
 import { TopBar } from "@/components/TopBar";
 import { BottomNav } from "@/components/BottomNav";
+import { AuthProvider } from "@/components/AuthProvider";
 import { prisma } from "@/lib/prisma";
 
 const geistSans = Geist({
@@ -40,17 +41,19 @@ export default async function RootLayout({
   return (
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body className="min-h-screen bg-zinc-50 pb-32">
-        <I18nProvider>
-          <PocketProvider initialPockets={initialPockets}>
-            <TopBar />
-            <main className="max-w-lg mx-auto px-4 py-4">
-              <Suspense fallback={<div className="text-center py-8 text-sm text-zinc-400">Memuat...</div>}>
-                {children}
-              </Suspense>
-            </main>
-            <BottomNav />
-          </PocketProvider>
-        </I18nProvider>
+        <AuthProvider>
+          <I18nProvider>
+            <PocketProvider initialPockets={initialPockets}>
+              <TopBar />
+              <main className="max-w-lg mx-auto px-4 py-4">
+                <Suspense fallback={<div className="text-center py-8 text-sm text-zinc-400">Memuat...</div>}>
+                  {children}
+                </Suspense>
+              </main>
+              <BottomNav />
+            </PocketProvider>
+          </I18nProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -10,7 +10,7 @@ type Dict = {
 
 const dictionaries: Record<Lang, Dict> = {
   id: {
-    "app.name": "Kawang Uang",
+    "app.name": "KAWAN UANG",
     "nav.home": "Beranda",
     "nav.transactions": "Transaksi",
     "nav.budget": "Budget",
@@ -63,7 +63,7 @@ const dictionaries: Record<Lang, Dict> = {
     "debt.mark_paid": "Lunas",
   },
   en: {
-    "app.name": "Kawang Uang",
+    "app.name": "KAWAN UANG",
     "nav.home": "Home",
     "nav.transactions": "Transactions",
     "nav.budget": "Budget",

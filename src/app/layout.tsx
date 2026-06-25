@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Kawang Uang",
+  title: "KAWAN UANG",
   description: "Aplikasi Keuangan Pribadi",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
 };

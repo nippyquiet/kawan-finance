@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { usePocket } from "@/lib/PocketContext";
 import { formatIDR, formatDate, getTodayStr, formatNumberInput } from "@/lib/utils";
 import { useSearchParams } from "next/navigation";
-import { Trash2, Plus, X, Sparkles, FolderPlus, Pencil, Paperclip, FileText, Image as ImageIcon, Eye } from "lucide-react";
+import { Trash2, Plus, X, Sparkles, FolderPlus, Pencil, Paperclip, FileText, Image as ImageIcon, Eye, Search, Filter } from "lucide-react";
 
 type Category = { id: number; name: string; type: string; icon: string; color: string };
 type Transaction = {
@@ -14,6 +14,9 @@ type Transaction = {
 };
 
 const emptyForm = { amount: "", description: "", date: getTodayStr(), type: "EXPENSE", categoryId: "", attachmentPath: "", attachmentType: "" };
+const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+
+type FilterPeriod = "all" | "thisMonth" | "lastMonth" | "future";
 
 export default function TransactionsPage() {
   const { activePocket } = usePocket();
@@ -24,6 +27,12 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
   const [editId, setEditId] = useState<number | null>(null);
+
+  // Filters
+  const [period, setPeriod] = useState<FilterPeriod>("thisMonth");
+  const [typeFilter, setTypeFilter] = useState<"all" | "INCOME" | "EXPENSE">("all");
+  const [searchQ, setSearchQ] = useState("");
+
   const [suggestion, setSuggestion] = useState<{ label: string; confidence: number } | null>(null);
   const [newCatSuggestion, setNewCatSuggestion] = useState<string | null>(null);
   const [suggesting, setSuggesting] = useState(false);
@@ -35,11 +44,33 @@ export default function TransactionsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
+  const getDateFilter = () => {
+    const now = new Date();
+    const m = now.getMonth() + 1;
+    const y = now.getFullYear();
+    switch (period) {
+      case "thisMonth":
+        return { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
+      case "lastMonth":
+        return { gte: new Date(y, m - 2, 1), lt: new Date(y, m - 1, 1) };
+      case "future":
+        return { gte: new Date(y, m, 1) };
+      case "all":
+      default:
+        return {};
+    }
+  };
+
   const load = () => {
     if (!activePocket) return;
     setLoading(true);
+    const dateFilter = getDateFilter();
+    let url = `/api/transactions?pocketId=${activePocket.id}`;
+    if (dateFilter.gte) url += `&dateFrom=${dateFilter.gte.toISOString()}`;
+    if (dateFilter.lt) url += `&dateTo=${dateFilter.lt.toISOString()}`;
+
     Promise.all([
-      fetch(`/api/transactions?pocketId=${activePocket.id}`).then(r => r.json()),
+      fetch(url).then(r => r.json()),
       fetch("/api/categories").then(r => r.json()),
     ]).then(([txData, cats]) => {
       setTransactions(txData.transactions || []);
@@ -48,7 +79,7 @@ export default function TransactionsPage() {
     });
   };
 
-  useEffect(() => { load(); }, [activePocket]);
+  useEffect(() => { load(); }, [activePocket, period]);
 
   // Open form from FAB
   useEffect(() => {
@@ -56,6 +87,23 @@ export default function TransactionsPage() {
       setShowForm(true);
     }
   }, [searchParams]);
+
+  // Filter + search
+  const filtered = transactions
+    .filter(t => typeFilter === "all" || t.type === typeFilter)
+    .filter(t => !searchQ || t.description.toLowerCase().includes(searchQ.toLowerCase()));
+
+  // Summary
+  const totalIncome = filtered.filter(t => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  const totalExpense = filtered.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+
+  // Group by date
+  const grouped: Record<string, Transaction[]> = {};
+  for (const t of filtered) {
+    const key = t.date.split("T")[0];
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(t);
+  }
 
   const suggestCategory = (desc: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -69,10 +117,8 @@ export default function TransactionsPage() {
           setForm(prev => ({ ...prev, categoryId: String(data.categoryId) }));
           setSuggestion({ label: `${data.category?.icon || "📌"} ${data.category?.name || ""}`, confidence: data.confidence });
           setNewCatSuggestion(null);
-        } else if (data.suggestedNewCategory) {
-          setSuggestion(null);
-          setNewCatSuggestion(data.suggestedNewCategory);
-        } else { setSuggestion(null); setNewCatSuggestion(null); }
+        } else if (data.suggestedNewCategory) { setSuggestion(null); setNewCatSuggestion(data.suggestedNewCategory); }
+        else { setSuggestion(null); setNewCatSuggestion(null); }
       } catch { setSuggestion(null); setNewCatSuggestion(null); }
       setSuggesting(false);
     }, 400);
@@ -83,8 +129,7 @@ export default function TransactionsPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
+      const fd = new FormData(); fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (data.path) {
@@ -131,7 +176,6 @@ export default function TransactionsPage() {
   const submit = async () => {
     const amount = Math.round(parseFloat(form.amount.replace(/[^0-9]/g, "")));
     if (!amount || !form.description) return;
-
     const payload = {
       amount, description: form.description, date: form.date, type: form.type,
       categoryId: form.categoryId ? parseInt(form.categoryId) : null,
@@ -139,20 +183,16 @@ export default function TransactionsPage() {
       attachmentType: form.attachmentType || null,
       pocketId: activePocket?.id || null,
     };
-
     if (editId) {
       await fetch(`/api/transactions/${editId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } else {
       await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     }
-    resetForm();
-    setShowForm(false);
-    load();
+    resetForm(); setShowForm(false); load();
   };
 
   const remove = async (id: number) => {
-    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-    load();
+    await fetch(`/api/transactions/${id}`, { method: "DELETE" }); load();
   };
 
   const expenseCats = categories.filter(c => c.type === "EXPENSE");
@@ -160,13 +200,78 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header + Search */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Transaksi</h1>
-        <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700">
-          <Plus className="w-4 h-4" /> Tambah
+        <h1 className="text-xl font-bold">Transaksi</h1>
+        <button onClick={() => { resetForm(); setShowForm(true); }} className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-xl text-xs font-medium hover:bg-blue-700">
+          <Plus className="w-3.5 h-3.5" /> Baru
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+        <input
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          placeholder="Cari transaksi..."
+          className="w-full pl-9 pr-3 py-2 border border-zinc-200 rounded-xl text-sm bg-white"
+        />
+      </div>
+
+      {/* Period Tabs */}
+      <div className="flex gap-1 bg-zinc-100 rounded-xl p-1">
+        {[
+          { key: "all" as FilterPeriod, label: "Semua" },
+          { key: "thisMonth" as FilterPeriod, label: "Bulan Ini" },
+          { key: "lastMonth" as FilterPeriod, label: "Bulan Lalu" },
+          { key: "future" as FilterPeriod, label: "Mendatang" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setPeriod(tab.key)}
+            className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              period === tab.key ? "bg-white text-blue-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Type Filter */}
+      <div className="flex gap-2">
+        {[
+          { key: "all" as "all", label: "Semua" },
+          { key: "INCOME" as "INCOME", label: "Pemasukan" },
+          { key: "EXPENSE" as "EXPENSE", label: "Pengeluaran" },
+        ].map(f => (
+          <button
+            key={f.key}
+            onClick={() => setTypeFilter(f.key)}
+            className={`px-3 py-1 text-xs rounded-lg font-medium ${
+              typeFilter === f.key
+                ? f.key === "INCOME" ? "bg-green-100 text-green-700" : f.key === "EXPENSE" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                : "bg-zinc-100 text-zinc-500"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Summary bar */}
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between bg-white rounded-xl border border-zinc-100 px-4 py-2.5 text-sm">
+          <span className="text-zinc-500">{filtered.length} transaksi</span>
+          <div className="flex gap-3">
+            <span className="text-green-600 font-medium">+{formatIDR(totalIncome)}</span>
+            <span className="text-red-600 font-medium">-{formatIDR(totalExpense)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-zinc-200 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -228,7 +333,7 @@ export default function TransactionsPage() {
               </div>
             ) : (
               <button onClick={() => fileRef.current?.click()} className="flex items-center gap-2 text-sm text-zinc-500 hover:text-blue-600 w-full justify-center py-1" disabled={uploading}>
-                <Paperclip className="w-4 h-4" /> {uploading ? "Mengupload..." : "Lampirkan invoice (gambar/PDF, max 1MB)"}
+                <Paperclip className="w-4 h-4" /> {uploading ? "Mengupload..." : "Lampirkan invoice"}
               </button>
             )}
           </div>
@@ -239,6 +344,7 @@ export default function TransactionsPage() {
         </div>
       )}
 
+      {/* Preview Modal */}
       {previewTx && previewTx.attachmentPath && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setPreviewTx(null)}>
           <div className="bg-white rounded-xl max-w-lg max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
@@ -255,34 +361,65 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-zinc-200 divide-y divide-zinc-100">
-        {loading ? (<p className="p-4 text-center text-zinc-400 text-sm">Memuat...</p>
-        ) : transactions.length === 0 ? (<p className="p-4 text-center text-zinc-400 text-sm">Belum ada transaksi</p>
-        ) : transactions.map(t => (
-          <div key={t.id} className="flex items-center justify-between p-4 hover:bg-zinc-50">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <span className="text-lg shrink-0">{t.category?.icon || "📌"}</span>
-              <div className="min-w-0">
-                <p className="font-medium text-sm truncate">{t.description}</p>
-                <p className="text-xs text-zinc-400 flex items-center gap-1 flex-wrap">
-                  {t.category?.name || "Tanpa kategori"} · {formatDate(t.date)}
-                  {t.attachmentPath && (
-                    <button onClick={() => setPreviewTx(t)} className="text-blue-500 hover:underline inline-flex items-center gap-0.5">
-                      <Paperclip className="w-3 h-3" /> Invoice
-                    </button>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <p className={`font-semibold text-sm ${t.type === "INCOME" ? "text-green-600" : "text-red-600"}`}>
-                {t.type === "INCOME" ? "+" : "-"}{formatIDR(t.amount)}
-              </p>
-              <button onClick={() => openEdit(t)} className="text-zinc-300 hover:text-blue-500 transition-colors"><Pencil className="w-4 h-4" /></button>
-              <button onClick={() => remove(t.id)} className="text-zinc-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
-            </div>
+      {/* Transaction List */}
+      <div className="space-y-4">
+        {loading ? (
+          <p className="text-center text-zinc-400 text-sm py-8">Memuat...</p>
+        ) : Object.keys(grouped).length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-zinc-100">
+            <p className="text-3xl mb-2">📭</p>
+            <p className="text-zinc-400 text-sm">Belum ada transaksi</p>
           </div>
-        ))}
+        ) : (
+          Object.entries(grouped).map(([dateKey, txs]) => {
+            const d = new Date(dateKey + "T00:00:00");
+            const isToday = dateKey === new Date().toISOString().split("T")[0];
+            const isYesterday = dateKey === new Date(Date.now() - 86400000).toISOString().split("T")[0];
+            const isFuture = d > new Date();
+            let label = `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+            if (isToday) label = "Hari Ini";
+            else if (isYesterday) label = "Kemarin";
+            else if (isFuture) label = `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+
+            const dayTotal = txs.reduce((s, t) => s + (t.type === "INCOME" ? t.amount : -t.amount), 0);
+
+            return (
+              <div key={dateKey}>
+                <div className="flex items-center justify-between mb-1.5 px-1">
+                  <h3 className="text-xs font-medium text-zinc-500">{label}</h3>
+                  <span className={`text-xs font-semibold ${dayTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {dayTotal >= 0 ? "+" : ""}{formatIDR(dayTotal)}
+                  </span>
+                </div>
+                <div className="bg-white rounded-xl border border-zinc-100 divide-y divide-zinc-50">
+                  {txs.map(tx => (
+                    <div key={tx.id} className="flex items-center gap-3 px-3 py-3 hover:bg-zinc-50">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${
+                        tx.type === "INCOME" ? "bg-green-100" : "bg-blue-100"
+                      }`}>
+                        {tx.category?.icon || (tx.type === "INCOME" ? "💰" : "💳")}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{tx.description || "Tanpa keterangan"}</p>
+                        <p className="text-xs text-zinc-400 flex items-center gap-1">
+                          {tx.category?.name || "Lainnya"}
+                          {tx.attachmentPath && <Eye className="w-3 h-3 inline" />}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <p className={`text-sm font-semibold ${tx.type === "INCOME" ? "text-green-600" : "text-red-600"}`}>
+                          {tx.type === "INCOME" ? "+" : "-"}{formatIDR(tx.amount)}
+                        </p>
+                        <button onClick={() => openEdit(tx)} className="text-zinc-300 hover:text-blue-500 p-1"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => remove(tx.id)} className="text-zinc-300 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

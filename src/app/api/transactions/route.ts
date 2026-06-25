@@ -6,18 +6,27 @@ export async function GET(request: NextRequest) {
   const month = searchParams.get("month");
   const year = searchParams.get("year");
   const pocketId = searchParams.get("pocketId");
+  const dateFrom = searchParams.get("dateFrom");
+  const dateTo = searchParams.get("dateTo");
 
   const now = new Date();
   const m = month ? parseInt(month) : now.getMonth() + 1;
   const y = year ? parseInt(year) : now.getFullYear();
 
-  const startDate = new Date(y, m - 1, 1);
-  const endDate = new Date(y, m, 1);
+  const where: any = {};
 
-  const where: any = {
-    date: { gte: startDate, lt: endDate },
-  };
   if (pocketId) where.pocketId = parseInt(pocketId);
+
+  // Date filtering: prioritize dateFrom/dateTo over month/year
+  if (dateFrom || dateTo) {
+    where.date = {};
+    if (dateFrom) where.date.gte = new Date(dateFrom);
+    if (dateTo) where.date.lt = new Date(dateTo);
+  } else {
+    const startDate = new Date(y, m - 1, 1);
+    const endDate = new Date(y, m, 1);
+    where.date = { gte: startDate, lt: endDate };
+  }
 
   const transactions = await prisma.transaction.findMany({
     where,

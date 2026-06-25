@@ -76,7 +76,11 @@ export async function GET(request: NextRequest) {
   const pocketId = searchParams.get("pocketId");
   const pid = pocketId ? parseInt(pocketId) : null;
 
-  const data = await getCachedAnalytics(pid);
+  const data = await unstable_cache(
+    async (pid: number | null) => getAnalytics(pid),
+    ["analytics", `p${pid ?? "all"}`],
+    { revalidate: 15 }
+  )(pid);
 
   const response = NextResponse.json(data);
   response.headers.set("Cache-Control", "public, max-age=10, stale-while-revalidate=30");

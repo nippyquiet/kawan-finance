@@ -10,26 +10,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { status } = useSession();
-  const isLogin = pathname === "/login";
+  const isLogin = pathname === "/login" || pathname.startsWith("/api/auth");
 
-  // Login page — clean
+  // Login / auth pages — no shell, no redirect
   if (isLogin) return <>{children}</>;
 
-  // Redirect if unauthenticated
+  // Redirect from protected pages to login
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace("/login");
     }
   }, [status, router]);
 
-  // Don't render anything until we know auth status
-  if (status === "loading" || status === "unauthenticated") {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  // Not authenticated yet — show nothing
+  if (status !== "authenticated") return null;
 
   return (
     <div className="pb-32">

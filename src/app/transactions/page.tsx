@@ -39,6 +39,7 @@ export default function TransactionsPage() {
   const [suggesting, setSuggesting] = useState(false);
   const [showNewCatForm, setShowNewCatForm] = useState(false);
   const [newCatName, setNewCatName] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<{ path: string; type: string; originalName: string } | null>(null);
   const [previewTx, setPreviewTx] = useState<Transaction | null>(null);
@@ -142,15 +143,32 @@ export default function TransactionsPage() {
   };
 
   const createCategory = async (name: string) => {
-    const res = await fetch("/api/categories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, type: form.type }) });
+    const res = await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), type: form.type }),
+    });
+    if (!res.ok) throw new Error("Gagal membuat kategori");
     return res.json();
   };
 
   const handleCreateCategory = async (name: string) => {
-    const cat = await createCategory(name);
-    setCategories(await fetch("/api/categories").then(r => r.json()));
-    setForm(prev => ({ ...prev, categoryId: String(cat.id) }));
-    setShowNewCatForm(false); setNewCatName(""); setNewCatSuggestion(null);
+    const trimmed = name.trim();
+    if (!trimmed || creatingCategory) return;
+    setCreatingCategory(true);
+    try {
+      const cat = await createCategory(trimmed);
+      setCategories(prev => {
+        const exists = prev.some(c => c.id === cat.id || (c.type === cat.type && c.name.toLowerCase() === cat.name.toLowerCase()));
+        return exists ? prev.map(c => c.id === cat.id ? cat : c) : [...prev, cat];
+      });
+      setForm(prev => ({ ...prev, categoryId: String(cat.id) }));
+      setShowNewCatForm(false); setNewCatName(""); setNewCatSuggestion(null);
+    } catch {
+      alert("Gagal membuat kategori. Coba lagi ya.");
+    } finally {
+      setCreatingCategory(false);
+    }
   };
 
   const openEdit = (tx: Transaction) => {
@@ -366,7 +384,9 @@ export default function TransactionsPage() {
               <p className="text-xs font-medium text-zinc-600">Kategori Baru</p>
               <div className="flex gap-2">
                 <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Nama kategori" className="flex-1 px-3 py-1.5 border border-zinc-200 rounded-lg text-sm" autoFocus />
-                <button onClick={() => handleCreateCategory(newCatName)} className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-700">Buat</button>
+                <button onClick={() => handleCreateCategory(newCatName)} disabled={creatingCategory || !newCatName.trim()} className="bg-emerald-600 disabled:bg-zinc-300 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-emerald-700 disabled:hover:bg-zinc-300">
+                  {creatingCategory ? "..." : "Buat"}
+                </button>
                 <button onClick={() => { setShowNewCatForm(false); setNewCatName(""); }} className="text-zinc-400 hover:text-zinc-600 px-2"><X className="w-4 h-4" /></button>
               </div>
             </div>

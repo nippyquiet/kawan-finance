@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePocket } from "@/lib/PocketContext";
 import { formatIDR, formatNumberInput, formatDate } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
-import { Plus, X, Pencil, CheckCircle, CreditCard, RefreshCw, Globe, Wallet, Settings } from "lucide-react";
+import { Plus, X, Pencil, CheckCircle, CreditCard, RefreshCw, Globe, Wallet, Settings, Tags } from "lucide-react";
 
 // === Types ===
 type Debt = {
@@ -16,6 +16,8 @@ type Recurring = {
   isActive: boolean; dayOfMonth: number | null; dayOfWeek: number | null;
   category?: { name: string; icon: string } | null; notes: string | null; nextDate: string | null;
 };
+
+type Category = { id: number; name: string; type: string; icon: string; color: string | null };
 
 // === Components ===
 function DebtSection({ pocketId, t }: { pocketId: number; t: (k: string) => string }) {
@@ -323,6 +325,147 @@ function AccountSection({ t }: { t: (k: string) => string }) {
   );
 }
 
+function CategorySection() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const [icon, setIcon] = useState("📌");
+  const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    const data = await fetch("/api/categories", { cache: "no-store" }).then(r => r.json()).catch(() => []);
+    setCategories(Array.isArray(data) ? data : []);
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const openCreate = () => {
+    setEditId(null); setName(""); setIcon("📌"); setType("EXPENSE"); setError(""); setShowForm(true);
+  };
+
+  const openEdit = (cat: Category) => {
+    setEditId(cat.id); setName(cat.name); setIcon(cat.icon || "📌"); setType(cat.type === "INCOME" ? "INCOME" : "EXPENSE"); setError(""); setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false); setEditId(null); setName(""); setIcon("📌"); setType("EXPENSE"); setError("");
+  };
+
+  const saveCategory = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true); setError("");
+    const payload = { id: editId, name: name.trim(), icon, type };
+    const res = await fetch("/api/categories", {
+      method: editId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "Gagal menyimpan kategori");
+      setSaving(false);
+      return;
+    }
+
+    const saved = await res.json();
+    setCategories(prev => {
+      const exists = prev.some(c => c.id === saved.id || (c.type === saved.type && c.name.toLowerCase() === saved.name.toLowerCase()));
+      return exists ? prev.map(c => c.id === saved.id ? saved : c) : [...prev, saved];
+    });
+    closeForm();
+    setSaving(false);
+  };
+
+  const deleteCategory = async (cat: Category) => {
+    if (!confirm(`Hapus kategori "${cat.name}"? Kategori hanya bisa dihapus kalau belum dipakai transaksi/budget/berulang.`)) return;
+    const previous = categories;
+    setCategories(prev => prev.filter(c => c.id !== cat.id));
+
+    const res = await fetch(`/api/categories?id=${cat.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      setCategories(previous);
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Gagal menghapus kategori");
+    }
+  };
+
+  const expenseCats = categories.filter(c => c.type === "EXPENSE");
+  const incomeCats = categories.filter(c => c.type === "INCOME");
+
+  const renderList = (items: Category[], title: string, tone: "red" | "green") => (
+    <div className="space-y-2">
+      <h3 className={`text-xs font-semibold uppercase tracking-wide ${tone === "green" ? "text-green-600" : "text-red-600"}`}>{title}</h3>
+      {items.map(cat => (
+        <div key={cat.id} className="bg-white rounded-xl border border-zinc-100 p-3 flex items-center gap-3">
+          <span className="text-xl w-9 h-9 rounded-xl bg-zinc-50 flex items-center justify-center">{cat.icon || "📌"}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{cat.name}</p>
+            <p className="text-xs text-zinc-400">{cat.type === "INCOME" ? "Pemasukan" : "Pengeluaran"}</p>
+          </div>
+          <button onClick={() => openEdit(cat)} className="p-2 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50" aria-label="Edit kategori"><Pencil className="w-4 h-4" /></button>
+          <button onClick={() => deleteCategory(cat)} className="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50" aria-label="Hapus kategori"><X className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {items.length === 0 && <p className="text-xs text-zinc-400 bg-white rounded-xl border border-zinc-100 p-3">Belum ada kategori.</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold">Manage Kategori</h2>
+          <p className="text-xs text-zinc-400">Tambah, edit, hapus kategori transaksi.</p>
+        </div>
+        <button onClick={openCreate} className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-xl text-xs font-medium hover:bg-blue-700">
+          <Plus className="w-3.5 h-3.5" /> Baru
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          {[1,2,3].map(i => <div key={i} className="h-16 bg-zinc-100 rounded-xl" />)}
+        </div>
+      ) : (
+        <>
+          {renderList(expenseCats, "Pengeluaran", "red")}
+          {renderList(incomeCats, "Pemasukan", "green")}
+        </>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 z-[70] bg-black/30 flex items-center justify-center p-4" onClick={closeForm}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">{editId ? "Edit Kategori" : "Kategori Baru"}</h3>
+              <button onClick={closeForm} className="p-1 text-zinc-400 hover:text-zinc-600"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex gap-2 bg-zinc-100 rounded-xl p-1">
+              <button onClick={() => setType("EXPENSE")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${type === "EXPENSE" ? "bg-white text-red-600 shadow-sm" : "text-zinc-500"}`}>Pengeluaran</button>
+              <button onClick={() => setType("INCOME")} className={`flex-1 py-2 rounded-lg text-sm font-medium ${type === "INCOME" ? "bg-white text-green-600 shadow-sm" : "text-zinc-500"}`}>Pemasukan</button>
+            </div>
+            <div className="flex gap-3">
+              <input value={icon} onChange={e => setIcon(e.target.value)} className="w-14 text-center text-2xl border border-zinc-200 rounded-lg px-2 py-2" maxLength={2} />
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Nama kategori" className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-sm" autoFocus />
+            </div>
+            {error && <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+            <button onClick={saveCategory} disabled={!name.trim() || saving} className="w-full bg-blue-600 disabled:bg-zinc-300 text-white py-2.5 rounded-xl text-sm font-medium">
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsSection({ t, lang, setLang }: { t: (k: string) => string; lang: string; setLang: (l: "id" | "en") => void }) {
   return (
     <div className="space-y-3">
@@ -363,12 +506,13 @@ function SettingsSection({ t, lang, setLang }: { t: (k: string) => string; lang:
 export default function AccountPage() {
   const { activePocket } = usePocket();
   const { t, lang, setLang } = useTranslation();
-  const [activeTab, setActiveTab] = useState<"debt" | "recurring" | "account" | "settings">("debt");
+  const [activeTab, setActiveTab] = useState<"debt" | "recurring" | "account" | "category" | "settings">("debt");
 
   const tabs = [
     { key: "debt" as const, icon: CreditCard, label: t("debt.title").split(" &")[0] },
     { key: "recurring" as const, icon: RefreshCw, label: "Berulang" },
     { key: "account" as const, icon: Wallet, label: t("account.title").split(" ")[0] },
+    { key: "category" as const, icon: Tags, label: "Kategori" },
     { key: "settings" as const, icon: Settings, label: t("settings.title") },
   ];
 
@@ -395,6 +539,7 @@ export default function AccountPage() {
       {activeTab === "debt" && activePocket && <DebtSection pocketId={activePocket.id} t={t} />}
       {activeTab === "recurring" && activePocket && <RecurringSection pocketId={activePocket.id} t={t} />}
       {activeTab === "account" && activePocket && <AccountSection t={t} />}
+      {activeTab === "category" && <CategorySection />}
       {activeTab === "settings" && <SettingsSection t={t} lang={lang} setLang={setLang} />}
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { usePocket } from "@/lib/PocketContext";
 import { formatIDR } from "@/lib/utils";
@@ -22,12 +22,40 @@ const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov
 export default function Home() {
   const { data: session, status } = useSession();
   const { activePocket, totalAssets, loading: pocketLoading } = usePocket();
+  const [cachedAnalytics, setCachedAnalytics] = useState<Analytics | null>(null);
 
-  const { data, isLoading } = useSWR<Analytics>(
+  useEffect(() => {
+    const email = session?.user?.email;
+    if (!email || !activePocket || typeof window === "undefined") return;
+
+    try {
+      const raw = localStorage.getItem(`kawan:analytics:${email}:p${activePocket.id}`);
+      if (raw) setCachedAnalytics(JSON.parse(raw));
+    } catch {}
+  }, [session?.user?.email, activePocket?.id]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.analytics) setCachedAnalytics(detail.analytics as Analytics);
+    };
+    window.addEventListener("kawan:bootstrap", handler);
+    return () => window.removeEventListener("kawan:bootstrap", handler);
+  }, []);
+
+  const { data: liveData, isLoading } = useSWR<Analytics>(
     activePocket ? `/api/analytics?pocketId=${activePocket.id}` : null,
     fetcher,
-    { revalidateOnFocus: false, dedupingInterval: 5000 }
+    { revalidateOnFocus: false, dedupingInterval: 5000, fallbackData: cachedAnalytics || undefined }
   );
+
+  useEffect(() => {
+    const email = session?.user?.email;
+    if (!email || !activePocket || !liveData || typeof window === "undefined") return;
+    localStorage.setItem(`kawan:analytics:${email}:p${activePocket.id}`, JSON.stringify(liveData));
+  }, [session?.user?.email, activePocket?.id, liveData]);
+
+  const data = liveData || cachedAnalytics;
 
   // Loading
   if (status === "loading" || pocketLoading) {
@@ -61,7 +89,7 @@ export default function Home() {
     );
   }
 
-  if (isLoading || !data) {
+  if ((isLoading && !cachedAnalytics) || !data) {
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-32 bg-zinc-200 rounded-2xl" />

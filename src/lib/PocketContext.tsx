@@ -18,6 +18,8 @@ type PocketContextType = {
   setActivePocket: (p: Pocket) => void;
   loading: boolean;
   refresh: () => void;
+  upsertPocket: (p: Pocket) => void;
+  removePocket: (id: number) => void;
 };
 
 const PocketContext = createContext<PocketContextType>({
@@ -26,6 +28,8 @@ const PocketContext = createContext<PocketContextType>({
   setActivePocket: () => {},
   loading: true,
   refresh: () => {},
+  upsertPocket: () => {},
+  removePocket: () => {},
 });
 
 export function PocketProvider({
@@ -45,6 +49,22 @@ export function PocketProvider({
   });
   const [loading, setLoading] = useState(initialPockets.length === 0);
   const [fetched, setFetched] = useState(initialPockets.length > 0);
+
+  const upsertPocket = (pocket: Pocket) => {
+    setPockets(prev => {
+      const exists = prev.some(p => p.id === pocket.id);
+      return exists ? prev.map(p => p.id === pocket.id ? pocket : p) : [...prev, pocket];
+    });
+    setActivePocket(prev => prev?.id === pocket.id ? pocket : (prev || pocket));
+  };
+
+  const removePocket = (id: number) => {
+    setPockets(prev => {
+      const next = prev.filter(p => p.id !== id);
+      setActivePocket(current => current?.id === id ? (next[0] || null) : current);
+      return next;
+    });
+  };
 
   const refresh = () => {
     if (status !== "authenticated") {
@@ -83,7 +103,7 @@ export function PocketProvider({
   }, [status]);
 
   return (
-    <PocketContext.Provider value={{ pockets, activePocket, setActivePocket, loading, refresh }}>
+    <PocketContext.Provider value={{ pockets, activePocket, setActivePocket, loading, refresh, upsertPocket, removePocket }}>
       {children}
     </PocketContext.Provider>
   );

@@ -27,6 +27,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
   const [editId, setEditId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Filters
   const [period, setPeriod] = useState<FilterPeriod>("thisMonth");
@@ -174,25 +175,68 @@ export default function TransactionsPage() {
   };
 
   const submit = async () => {
+    if (saving) return;
     const amount = Math.round(parseFloat(form.amount.replace(/[^0-9]/g, "")));
     if (!amount || !form.description) return;
+
+    setSaving(true);
+    const categoryId = form.categoryId ? parseInt(form.categoryId) : null;
+    const category = categories.find(c => c.id === categoryId) || null;
     const payload = {
       amount, description: form.description, date: form.date, type: form.type,
-      categoryId: form.categoryId ? parseInt(form.categoryId) : null,
+      categoryId,
       attachmentPath: form.attachmentPath || null,
       attachmentType: form.attachmentType || null,
       pocketId: activePocket?.id || null,
     };
+
+    const previous = transactions;
+    const optimisticTx: Transaction = {
+      id: editId || -Date.now(),
+      amount,
+      description: form.description,
+      date: new Date(form.date).toISOString(),
+      type: form.type,
+      categoryId,
+      category,
+      attachmentPath: form.attachmentPath || null,
+      attachmentType: form.attachmentType || null,
+    };
+
     if (editId) {
-      await fetch(`/api/transactions/${editId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      setTransactions(prev => prev.map(tx => tx.id === editId ? { ...tx, ...optimisticTx, id: editId } : tx));
     } else {
-      await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      setTransactions(prev => [optimisticTx, ...prev]);
     }
-    resetForm(); setShowForm(false); load();
+    resetForm();
+    setShowForm(false);
+
+    try {
+      const res = editId
+        ? await fetch(`/api/transactions/${editId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+
+      if (!res.ok) throw new Error("Gagal menyimpan transaksi");
+      load();
+    } catch {
+      setTransactions(previous);
+      alert("Gagal menyimpan transaksi. Coba lagi ya.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const remove = async (id: number) => {
-    await fetch(`/api/transactions/${id}`, { method: "DELETE" }); load();
+    const previous = transactions;
+    setTransactions(prev => prev.filter(tx => tx.id !== id));
+    try {
+      const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Gagal menghapus transaksi");
+      load();
+    } catch {
+      setTransactions(previous);
+      alert("Gagal menghapus transaksi. Coba lagi ya.");
+    }
   };
 
   const expenseCats = categories.filter(c => c.type === "EXPENSE");
@@ -338,8 +382,8 @@ export default function TransactionsPage() {
             )}
           </div>
 
-          <button onClick={submit} className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            {editId ? "Simpan Perubahan" : "Simpan"}
+          <button onClick={submit} disabled={saving} className="w-full bg-blue-600 disabled:bg-zinc-300 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:hover:bg-zinc-300">
+            {saving ? "Menyimpan..." : editId ? "Simpan Perubahan" : "Simpan"}
           </button>
         </div>
       )}

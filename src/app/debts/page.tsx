@@ -185,7 +185,7 @@ function RecurringSection({ pocketId, t }: { pocketId: number; t: (k: string) =>
 }
 
 function AccountSection({ t }: { t: (k: string) => string }) {
-  const { pockets, activePocket, setActivePocket, refresh } = usePocket();
+  const { pockets, activePocket, setActivePocket, refresh, upsertPocket, removePocket } = usePocket();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [name, setName] = useState("");
@@ -235,9 +235,11 @@ function AccountSection({ t }: { t: (k: string) => string }) {
       return;
     }
 
+    const saved = await res.json();
+    upsertPocket(saved);
     closeForm();
-    refresh();
     setSaving(false);
+    refresh();
   };
 
   const deletePocket = async (pocket: { id: number; name: string; isDefault: boolean }) => {
@@ -251,10 +253,7 @@ function AccountSection({ t }: { t: (k: string) => string }) {
       return;
     }
 
-    if (activePocket?.id === pocket.id) {
-      const nextPocket = pockets.find(p => p.id !== pocket.id);
-      if (nextPocket) setActivePocket(nextPocket);
-    }
+    removePocket(pocket.id);
     refresh();
   };
 

@@ -9,7 +9,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { SearchOverlay } from "@/components/SearchOverlay";
 
 export function TopBar() {
-  const { pockets, activePocket, setActivePocket, refresh } = usePocket();
+  const { pockets, activePocket, setActivePocket, refresh, upsertPocket } = usePocket();
   const { data: session } = useSession();
   const [showPicker, setShowPicker] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -19,7 +19,8 @@ export function TopBar() {
 
   const createPocket = async () => {
     if (!newName.trim()) return;
-    await fetch("/api/pockets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), emoji: newEmoji }) });
+    const res = await fetch("/api/pockets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), emoji: newEmoji }) });
+    if (res.ok) upsertPocket(await res.json());
     setNewName(""); setShowCreate(false); refresh();
   };
 

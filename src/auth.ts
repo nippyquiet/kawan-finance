@@ -9,4 +9,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   secret: process.env.AUTH_SECRET,
+  trustHost: true,
+  callbacks: {
+    async session({ session, token }) {
+      if (session.user && token.sub) {
+        (session.user as typeof session.user & { id: string }).id = token.sub;
+      }
+      return session;
+    },
+  },
 });

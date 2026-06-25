@@ -2,19 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 
-export async function GET() {
+type SessionUser = {
+  id?: string;
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+};
+
+async function requireUser() {
   const session = await auth();
-  if (!session?.user?.id) return NextResponse.json([], { status: 401 });
+  const user = session?.user as SessionUser | undefined;
+  if (!user?.id || !user?.email) return null;
+
+  await prisma.user.upsert({
+    where: { email: user.email },
+    update: { name: user.name ?? null, image: user.image ?? null },
+    create: {
+      id: user.id,
+      email: user.email,
+      name: user.name ?? null,
+      image: user.image ?? null,
+    },
+  });
+
+  return { id: user.id, email: user.email };
+}
+
+export async function GET() {
+  const user = await requireUser();
+  if (!user) return NextResponse.json([], { status: 401 });
 
   const pockets = await prisma.pocket.findMany({
-    where: { userId: session.user.id },
+    where: { userId: user.id },
     orderBy: { createdAt: "asc" },
   });
 
-  // Auto-create default pocket for new users
   if (pockets.length === 0) {
     const defaultPocket = await prisma.pocket.create({
-      data: { name: "Utama", emoji: "👛", isDefault: true, userId: session.user.id },
+      data: { name: "Utama", emoji: "👛", isDefault: true, userId: user.id },
     });
     return NextResponse.json([defaultPocket]);
   }
@@ -23,15 +48,15 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
   const pocket = await prisma.pocket.create({
     data: {
       name: body.name,
       emoji: body.emoji || "👛",
-      userId: session.user.id,
+      userId: user.id,
     },
   });
   return NextResponse.json(pocket, { status: 201 });

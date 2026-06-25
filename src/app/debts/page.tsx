@@ -186,46 +186,137 @@ function RecurringSection({ pocketId, t }: { pocketId: number; t: (k: string) =>
 
 function AccountSection({ t }: { t: (k: string) => string }) {
   const { pockets, activePocket, setActivePocket, refresh } = usePocket();
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newEmoji, setNewEmoji] = useState("👛");
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("👛");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const createPocket = async () => {
-    if (!newName.trim()) return;
-    await fetch("/api/pockets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName.trim(), emoji: newEmoji }) });
-    setNewName(""); setShowCreate(false); refresh();
+  const openCreate = () => {
+    setEditId(null);
+    setName("");
+    setEmoji("👛");
+    setError("");
+    setShowForm(true);
+  };
+
+  const openEdit = (pocket: { id: number; name: string; emoji: string }) => {
+    setEditId(pocket.id);
+    setName(pocket.name);
+    setEmoji(pocket.emoji || "👛");
+    setError("");
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditId(null);
+    setName("");
+    setEmoji("👛");
+    setError("");
+  };
+
+  const savePocket = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError("");
+
+    const res = await fetch("/api/pockets", {
+      method: editId ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editId, name: name.trim(), emoji }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "Gagal menyimpan pocket");
+      setSaving(false);
+      return;
+    }
+
+    closeForm();
+    refresh();
+    setSaving(false);
+  };
+
+  const deletePocket = async (pocket: { id: number; name: string; isDefault: boolean }) => {
+    if (pocket.isDefault) return;
+    if (!confirm(`Hapus pocket "${pocket.name}"? Pocket hanya bisa dihapus kalau belum punya data terkait.`)) return;
+
+    const res = await fetch(`/api/pockets?id=${pocket.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Gagal menghapus pocket");
+      return;
+    }
+
+    if (activePocket?.id === pocket.id) {
+      const nextPocket = pockets.find(p => p.id !== pocket.id);
+      if (nextPocket) setActivePocket(nextPocket);
+    }
+    refresh();
   };
 
   return (
     <div className="space-y-3">
-      <h2 className="font-semibold">{t("account.title")}</h2>
-      {pockets.map(p => (
-        <button
-          key={p.id}
-          onClick={() => setActivePocket(p)}
-          className={`w-full flex items-center gap-3 bg-white rounded-xl border p-3 text-left ${activePocket?.id === p.id ? "border-blue-300 bg-blue-50" : "border-zinc-100"}`}
-        >
-          <span className="text-lg">{p.emoji}</span>
-          <div className="flex-1">
-            <p className="text-sm font-medium">{p.name}</p>
-            <p className="text-xs text-zinc-400">{formatIDR(p.balance)}</p>
-          </div>
-          {p.isDefault && <span className="text-[10px] text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">Default</span>}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold">Management Pocket</h2>
+          <p className="text-xs text-zinc-400">Edit nama, emoji, dan pilih pocket aktif.</p>
+        </div>
+        <button onClick={openCreate} className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-2 rounded-xl text-xs font-medium hover:bg-blue-700">
+          <Plus className="w-3.5 h-3.5" /> Baru
         </button>
-      ))}
-      <button onClick={() => setShowCreate(true)} className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-zinc-300 rounded-xl text-sm text-zinc-500 hover:bg-zinc-50">
-        <Plus className="w-4 h-4" /> {t("account.create")}
-      </button>
+      </div>
 
-      {showCreate && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
-            <h3 className="font-semibold">{t("account.create")}</h3>
-            <div className="flex gap-3">
-              <input value={newEmoji} onChange={e => setNewEmoji(e.target.value)} className="w-14 text-center text-2xl border border-zinc-200 rounded-lg px-2 py-2" maxLength={2} />
-              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Nama pocket" className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-sm" autoFocus />
+      {pockets.map(p => (
+        <div
+          key={p.id}
+          className={`w-full flex items-center gap-3 bg-white rounded-xl border p-3 ${activePocket?.id === p.id ? "border-blue-300 bg-blue-50" : "border-zinc-100"}`}
+        >
+          <button onClick={() => setActivePocket(p)} className="flex items-center gap-3 flex-1 text-left">
+            <span className="text-2xl w-10 h-10 rounded-xl bg-zinc-50 flex items-center justify-center">{p.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium truncate">{p.name}</p>
+                {p.isDefault && <span className="text-[10px] text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">Default</span>}
+              </div>
+              <p className="text-xs text-zinc-400">{formatIDR(p.balance)}</p>
             </div>
-            <button onClick={createPocket} className="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium">{t("save")}</button>
+          </button>
+
+          <div className="flex items-center gap-1">
+            <button onClick={() => openEdit(p)} className="p-2 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50" aria-label="Edit pocket">
+              <Pencil className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => deletePocket(p)}
+              disabled={p.isDefault}
+              className={`p-2 rounded-lg ${p.isDefault ? "text-zinc-200 cursor-not-allowed" : "text-zinc-400 hover:text-red-600 hover:bg-red-50"}`}
+              aria-label="Hapus pocket"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {showForm && (
+        <div className="fixed inset-0 z-[70] bg-black/30 flex items-center justify-center p-4" onClick={closeForm}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">{editId ? "Edit Pocket" : "Pocket Baru"}</h3>
+              <button onClick={closeForm} className="p-1 text-zinc-400 hover:text-zinc-600"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex gap-3">
+              <input value={emoji} onChange={e => setEmoji(e.target.value)} className="w-14 text-center text-2xl border border-zinc-200 rounded-lg px-2 py-2" maxLength={2} />
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Nama pocket" className="flex-1 px-3 py-2 border border-zinc-200 rounded-lg text-sm" autoFocus />
+            </div>
+            {error && <p className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</p>}
+            <button onClick={savePocket} disabled={!name.trim() || saving} className="w-full bg-blue-600 disabled:bg-zinc-300 text-white py-2.5 rounded-xl text-sm font-medium">
+              {saving ? "Menyimpan..." : t("save")}
+            </button>
           </div>
         </div>
       )}

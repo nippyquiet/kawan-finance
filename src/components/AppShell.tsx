@@ -9,20 +9,28 @@ import { ReactNode, useEffect } from "react";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const isLogin = pathname === "/login";
 
-  // Only redirect from protected pages — never from login or auth pages
-  useEffect(() => {
-    if (status === "unauthenticated" && !isLogin && !pathname.startsWith("/api")) {
-      router.replace("/login");
-    }
-  }, [status, isLogin, pathname, router]);
-
-  // Login page — clean, no chrome, no redirect logic
+  // Login page — clean
   if (isLogin) return <>{children}</>;
 
-  // Show app shell immediately (no loading spinner to avoid flicker)
+  // Redirect if unauthenticated
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [status, router]);
+
+  // Don't render anything until we know auth status
+  if (status === "loading" || status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
   return (
     <div className="pb-32">
       <TopBar />

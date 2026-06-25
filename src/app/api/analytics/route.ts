@@ -65,12 +65,6 @@ async function getAnalytics(pocketId: number | null) {
   };
 }
 
-const getCachedAnalytics = unstable_cache(
-  async (pocketId: number | null) => getAnalytics(pocketId),
-  ["analytics"],
-  { revalidate: 15, tags: ["analytics"] }
-);
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const pocketId = searchParams.get("pocketId");

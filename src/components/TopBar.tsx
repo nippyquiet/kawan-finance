@@ -30,7 +30,7 @@ export function TopBar() {
       {/* Top row: brand + icons */}
       <div className="flex items-center justify-between mb-2">
         <Link href="/" className="font-bold text-lg text-blue-600 tracking-tight">
-          KAWAN
+          Kawang
         </Link>
         <div className="flex items-center gap-3">
           <Search className="w-5 h-5 text-zinc-500" />

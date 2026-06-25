@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "KAWAN Finance",
-  description: "Personal Finance Manager",
+  title: "Kawang Uang",
+  description: "Aplikasi Keuangan Pribadi",
   viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
 };
 

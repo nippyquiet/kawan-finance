@@ -253,7 +253,7 @@ function SettingsSection({ t, lang, setLang }: { t: (k: string) => string; lang:
       <div className="bg-white rounded-xl border border-zinc-100 p-3">
         <div className="flex items-center justify-between text-sm">
           <span className="text-zinc-500">{t("settings.about")}</span>
-          <span className="text-zinc-700">KAWAN Finance</span>
+          <span className="text-zinc-700">Kawang Uang</span>
         </div>
         <div className="flex items-center justify-between text-sm mt-2">
           <span className="text-zinc-500">{t("settings.version")}</span>
@@ -263,7 +263,7 @@ function SettingsSection({ t, lang, setLang }: { t: (k: string) => string; lang:
 
       {/* Note */}
       <p className="text-[10px] text-zinc-400 text-center">
-        Dibuat dengan ❤️ oleh KAWAN · Data aman di Supabase
+        Dibuat dengan ❤️ oleh Kawang · Data aman di Supabase
       </p>
     </div>
   );

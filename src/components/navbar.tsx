@@ -27,7 +27,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 bg-white border-b border-zinc-200">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/" className="font-bold text-lg text-blue-600 tracking-tight">
-          KAWAN Finance
+          Kawang Uang
         </Link>
         <nav className="flex items-center gap-1">
           {navItems.map((item) => {

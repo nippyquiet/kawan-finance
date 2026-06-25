@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import BerandaClient from "@/components/BerandaClient";
 
-export const dynamic = "force-dynamic";
+// ISR: revalidate every 60s, first request is instant from cache
+export const revalidate = 60;
 
 async function getAnalytics(pocketId: number) {
   const now = new Date();
@@ -61,10 +62,9 @@ async function getAnalytics(pocketId: number) {
 }
 
 export default async function HomePage() {
-  // Fetch default pocket + analytics in PARALLEL on the server
   const [pockets, defaultAnalytics] = await Promise.all([
     prisma.pocket.findMany({ orderBy: { createdAt: "asc" } }),
-    getAnalytics(1), // Default to pocket ID 1
+    getAnalytics(1),
   ]);
 
   const defaultPocket = pockets.find(p => p.isDefault) || pockets[0] || { id: 1, name: "KAWAN UANG", emoji: "👛", balance: 0, isDefault: true };

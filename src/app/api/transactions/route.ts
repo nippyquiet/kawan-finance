@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { revalidatePath } from "next/cache";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -67,5 +68,6 @@ export async function POST(request: NextRequest) {
     },
     include: { category: true },
   });
+  revalidatePath("/");
   return Response.json(transaction, { status: 201 });
 }

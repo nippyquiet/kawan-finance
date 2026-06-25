@@ -15,7 +15,10 @@ async function requireUser() {
   const session = await auth();
   const user = session?.user as SessionUser | undefined;
   if (!user?.id || !user?.email) return null;
+  return { id: user.id, email: user.email, name: user.name ?? null, image: user.image ?? null };
+}
 
+async function ensureUser(user: { id: string; email: string; name?: string | null; image?: string | null }) {
   await prisma.user.upsert({
     where: { email: user.email },
     update: { name: user.name ?? null, image: user.image ?? null },
@@ -26,8 +29,6 @@ async function requireUser() {
       image: user.image ?? null,
     },
   });
-
-  return { id: user.id, email: user.email };
 }
 
 async function attachComputedBalances(pockets: PocketRow[]) {
@@ -61,6 +62,7 @@ export async function GET() {
   });
 
   if (pockets.length === 0) {
+    await ensureUser(user);
     const defaultPocket = await prisma.pocket.create({
       data: { name: "Utama", emoji: "👛", isDefault: true, userId: user.id },
     });
@@ -73,6 +75,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  await ensureUser(user);
 
   const body = await request.json();
   const pocket = await prisma.pocket.create({

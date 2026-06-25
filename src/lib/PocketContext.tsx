@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useSession } from "next-auth/react";
 
 type Pocket = {
   id: number;
@@ -8,6 +9,7 @@ type Pocket = {
   emoji: string;
   balance: number;
   isDefault: boolean;
+  userId: string | null;
 };
 
 type PocketContextType = {
@@ -33,6 +35,7 @@ export function PocketProvider({
   children: ReactNode;
   initialPockets?: Pocket[];
 }) {
+  const { data: session, status } = useSession();
   const [pockets, setPockets] = useState<Pocket[]>(initialPockets);
   const [activePocket, setActivePocket] = useState<Pocket | null>(() => {
     if (initialPockets.length > 0) {
@@ -44,9 +47,16 @@ export function PocketProvider({
   const [fetched, setFetched] = useState(initialPockets.length > 0);
 
   const refresh = () => {
+    if (status !== "authenticated") {
+      setPockets([]);
+      setActivePocket(null);
+      setLoading(false);
+      return;
+    }
     fetch("/api/pockets")
       .then((r) => r.json())
       .then((data: Pocket[]) => {
+        if (!Array.isArray(data)) return;
         setPockets(data);
         if (data.length > 0) {
           const def = data.find(p => p.isDefault) || data[0];
@@ -61,10 +71,16 @@ export function PocketProvider({
       .catch(() => setLoading(false));
   };
 
-  // Only fetch if we didn't get initial data from server
+  // Fetch when session is ready
   useEffect(() => {
-    if (!fetched) refresh();
-  }, []);
+    if (status === "authenticated") {
+      if (!fetched) refresh();
+    } else if (status === "unauthenticated") {
+      setPockets([]);
+      setActivePocket(null);
+      setLoading(false);
+    }
+  }, [status]);
 
   return (
     <PocketContext.Provider value={{ pockets, activePocket, setActivePocket, loading, refresh }}>

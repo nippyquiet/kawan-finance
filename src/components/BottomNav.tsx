@@ -20,7 +20,7 @@ export function BottomNav() {
       {!pathname.startsWith("/import") && (
         <Link
           href="/transactions?add=1"
-          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-600 active:scale-95 transition-all"
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[60] w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-600 active:scale-95 transition-all"
         >
           <Plus className="w-7 h-7 text-white" />
         </Link>

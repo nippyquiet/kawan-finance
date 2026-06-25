@@ -1,73 +1,187 @@
-import { prisma } from "@/lib/prisma";
-import BerandaClient from "@/components/BerandaClient";
+"use client";
 
-// ISR: revalidate every 60s, first request is instant from cache
-export const revalidate = 60;
+import { useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { usePocket } from "@/lib/PocketContext";
+import { formatIDR } from "@/lib/utils";
+import { ArrowUpRight, ArrowDownRight, PiggyBank, TrendingUp, Wallet, LogIn } from "lucide-react";
+import useSWR from "swr";
+import Link from "next/link";
 
-async function getAnalytics(pocketId: number) {
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  const sixMonthsAgo = new Date(currentYear, currentMonth - 6, 1);
-  const endOfCurrentMonth = new Date(currentYear, currentMonth, 1);
+type Analytics = {
+  currentMonth: { income: number; expense: number; net: number };
+  monthlyTrend: { month: number; year: number; income: number; expense: number; net: number }[];
+  topCategories: { id: number; name: string; icon: string; total: number }[];
+  budget: { total: number; spent: number; remaining: number };
+  allTime: { income: number; expense: number; net: number };
+};
 
-  const allRecentTx = await prisma.transaction.findMany({
-    where: { pocketId, date: { gte: sixMonthsAgo, lt: endOfCurrentMonth } },
-    select: { id: true, amount: true, type: true, date: true, categoryId: true },
-  });
+const fetcher = (url: string) => fetch(url).then(r => r.json());
+const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
-  const byMonth: Record<string, { income: number; expense: number }> = {};
-  const catSpending: Record<number, number> = {};
-  for (const tx of allRecentTx) {
-    const m = `${tx.date.getFullYear()}-${tx.date.getMonth() + 1}`;
-    if (!byMonth[m]) byMonth[m] = { income: 0, expense: 0 };
-    if (tx.type === "INCOME") byMonth[m].income += tx.amount;
-    else { byMonth[m].expense += tx.amount; if (tx.categoryId) catSpending[tx.categoryId] = (catSpending[tx.categoryId] || 0) + tx.amount; }
+export default function Home() {
+  const { data: session, status } = useSession();
+  const { activePocket, loading: pocketLoading } = usePocket();
+
+  const { data, isLoading } = useSWR<Analytics>(
+    activePocket ? `/api/analytics?pocketId=${activePocket.id}` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 5000 }
+  );
+
+  // Loading
+  if (status === "loading" || pocketLoading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-zinc-200 rounded-2xl" />
+        <div className="grid grid-cols-3 gap-3">
+          {[1,2,3].map(i => <div key={i} className="h-20 bg-zinc-100 rounded-xl" />)}
+        </div>
+        <div className="h-48 bg-zinc-100 rounded-xl" />
+      </div>
+    );
   }
 
-  const monthlyTrend = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(currentYear, currentMonth - 1 - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-    const data = byMonth[key] || { income: 0, expense: 0 };
-    monthlyTrend.push({ month: d.getMonth() + 1, year: d.getFullYear(), income: data.income, expense: data.expense, net: data.income - data.expense });
+  // Not logged in
+  if (status === "unauthenticated") {
+    return (
+      <div className="text-center py-16 space-y-4">
+        <p className="text-5xl mb-2">💰</p>
+        <h1 className="text-2xl font-bold text-zinc-800">KAWAN UANG</h1>
+        <p className="text-zinc-500 text-sm max-w-xs mx-auto">
+          Kelola keuanganmu dengan pintar. Lacak pemasukan, pengeluaran, budget, dan hutang — semua dalam satu app.
+        </p>
+        <Link
+          href="/api/auth/signin/google"
+          className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors mt-4"
+        >
+          <LogIn className="w-4 h-4" /> Masuk dengan Google
+        </Link>
+      </div>
+    );
   }
 
-  const thisMonthKey = `${currentYear}-${currentMonth}`;
-  const thisMonthData = byMonth[thisMonthKey] || { income: 0, expense: 0 };
-
-  const catIds = Object.keys(catSpending).map(Number);
-  const catMap: Record<number, { name: string; icon: string }> = {};
-  if (catIds.length > 0) {
-    const cats = await prisma.category.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true, icon: true } });
-    for (const c of cats) catMap[c.id] = { name: c.name, icon: c.icon || "📌" };
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="h-32 bg-zinc-200 rounded-2xl" />
+        <div className="grid grid-cols-3 gap-3">
+          {[1,2,3].map(i => <div key={i} className="h-20 bg-zinc-100 rounded-xl" />)}
+        </div>
+      </div>
+    );
   }
-  const topCategories = Object.entries(catSpending).sort(([, a], [, b]) => b - a).slice(0, 5)
-    .map(([id, total]) => ({ id: parseInt(id), total, name: catMap[parseInt(id)]?.name || "", icon: catMap[parseInt(id)]?.icon || "📌" }));
 
-  const budgets = await prisma.budget.findMany({ where: { pocketId, month: currentMonth, year: currentYear }, select: { amount: true } });
-  const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0);
+  const { currentMonth, monthlyTrend, topCategories, budget } = data;
+  const maxTrend = Math.max(...monthlyTrend.map(m => Math.max(m.income, m.expense, 1)), 1);
 
-  const [allTimeIncome, allTimeExpense] = await Promise.all([
-    prisma.transaction.aggregate({ where: { pocketId, type: "INCOME" }, _sum: { amount: true } }),
-    prisma.transaction.aggregate({ where: { pocketId, type: "EXPENSE" }, _sum: { amount: true } }),
-  ]);
+  return (
+    <div className="space-y-5">
+      {/* Welcome */}
+      <div>
+        <p className="text-sm text-zinc-500">Halo, {session?.user?.name?.split(" ")[0] || "KAWAN"} 👋</p>
+      </div>
 
-  return {
-    currentMonth: { income: thisMonthData.income, expense: thisMonthData.expense, net: thisMonthData.income - thisMonthData.expense },
-    monthlyTrend, topCategories,
-    budget: { total: budgetTotal, spent: thisMonthData.expense, remaining: budgetTotal - thisMonthData.expense },
-    allTime: { income: allTimeIncome._sum.amount || 0, expense: allTimeExpense._sum.amount || 0, net: (allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0) },
-  };
-}
+      {/* Net Worth Card */}
+      <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 text-white">
+        <p className="text-sm text-blue-200">Total Kekayaan Bersih</p>
+        <p className="text-3xl font-bold mt-1">{formatIDR(data.allTime.net)}</p>
+        <div className="flex items-center gap-4 mt-3 text-xs text-blue-100">
+          <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> {formatIDR(data.allTime.income)}</span>
+          <span className="flex items-center gap-1"><ArrowDownRight className="w-3 h-3" /> {formatIDR(data.allTime.expense)}</span>
+        </div>
+      </div>
 
-export default async function HomePage() {
-  const [pockets, defaultAnalytics] = await Promise.all([
-    prisma.pocket.findMany({ orderBy: { createdAt: "asc" } }),
-    getAnalytics(1),
-  ]);
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: "Pemasukan", val: currentMonth.income, color: "green", Icon: ArrowUpRight },
+          { label: "Pengeluaran", val: currentMonth.expense, color: "red", Icon: ArrowDownRight },
+          { label: "Net", val: currentMonth.net, color: "blue", Icon: Wallet },
+        ].map((s, i) => (
+          <div key={i} className="bg-white rounded-xl border border-zinc-100 p-3 text-center">
+            <div className={`w-8 h-8 rounded-full bg-${s.color}-100 flex items-center justify-center mx-auto mb-1`}>
+              <s.Icon className={`w-4 h-4 text-${s.color}-600`} />
+            </div>
+            <p className="text-xs text-zinc-500">{s.label}</p>
+            <p className={`font-bold text-sm mt-0.5 ${s.label === "Net" ? (s.val >= 0 ? "text-green-600" : "text-red-600") : ""}`}>
+              {formatIDR(s.val)}
+            </p>
+          </div>
+        ))}
+      </div>
 
-  const defaultPocket = pockets.find(p => p.isDefault) || pockets[0] || { id: 1, name: "KAWAN UANG", emoji: "👛", balance: 0, isDefault: true };
+      {/* Monthly Trend Chart */}
+      <div className="bg-white rounded-xl border border-zinc-100 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm">Tren Bulanan</h3>
+          <TrendingUp className="w-4 h-4 text-zinc-400" />
+        </div>
+        <div className="flex items-end justify-between gap-1 h-40">
+          {monthlyTrend.map((m, i) => (
+            <div key={i} className="flex flex-col items-center gap-1 flex-1">
+              <div className="flex flex-col items-center relative w-full" style={{ height: "140px" }}>
+                <div className="w-full bg-emerald-400 rounded-t-sm" style={{ height: `${Math.max(2, (m.income / maxTrend) * 100)}px`, opacity: 0.85 }} />
+                <div className="w-full bg-red-400 rounded-t-sm -mt-1" style={{ height: `${Math.max(2, (m.expense / maxTrend) * 100)}px`, opacity: 0.75 }} />
+              </div>
+              <span className="text-[10px] text-zinc-400 font-medium">{MONTHS[m.month - 1]}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-emerald-400" /> Pemasukan</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-400" /> Pengeluaran</span>
+        </div>
+      </div>
 
-  return <BerandaClient initialData={defaultAnalytics} initialPocket={defaultPocket} />;
+      {/* Budget */}
+      {budget.total > 0 && (
+        <div className="bg-white rounded-xl border border-zinc-100 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-sm flex items-center gap-1.5"><PiggyBank className="w-4 h-4 text-blue-500" /> Budget</h3>
+            <Link href="/budget" className="text-xs text-blue-500 hover:underline">Atur →</Link>
+          </div>
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="text-zinc-500">Terpakai</span>
+            <span className="font-medium">{formatIDR(budget.spent)} / {formatIDR(budget.total)}</span>
+          </div>
+          <div className="h-2.5 bg-zinc-100 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${budget.spent > budget.total ? "bg-red-500" : "bg-blue-500"}`}
+              style={{ width: `${Math.min(100, (budget.spent / Math.max(budget.total, 1)) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Top Categories */}
+      {topCategories.length > 0 && (
+        <div className="bg-white rounded-xl border border-zinc-100 p-4">
+          <h3 className="font-semibold text-sm mb-3">Kategori Teratas</h3>
+          <div className="space-y-3">
+            {topCategories.map((cat) => {
+              const pct = currentMonth.expense > 0 ? (cat.total / currentMonth.expense) * 100 : 0;
+              return (
+                <div key={cat.id}>
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <div className="flex items-center gap-2"><span className="text-base">{cat.icon}</span><span className="text-zinc-700">{cat.name}</span></div>
+                    <span className="font-medium">{formatIDR(cat.total)}</span>
+                  </div>
+                  <div className="h-1.5 bg-zinc-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {topCategories.length === 0 && currentMonth.income === 0 && currentMonth.expense === 0 && (
+        <div className="text-center py-12 bg-white rounded-xl border border-zinc-100">
+          <p className="text-4xl mb-3">📊</p>
+          <p className="text-zinc-500 text-sm">Belum ada data bulan ini</p>
+          <Link href="/transactions?add=1" className="inline-block mt-3 bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium">Transaksi Pertama</Link>
+        </div>
+      )}
+    </div>
+  );
 }

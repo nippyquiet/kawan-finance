@@ -15,6 +15,7 @@ type Pocket = {
 type PocketContextType = {
   pockets: Pocket[];
   activePocket: Pocket | null;
+  totalAssets: number;
   setActivePocket: (p: Pocket) => void;
   loading: boolean;
   refresh: () => void;
@@ -25,6 +26,7 @@ type PocketContextType = {
 const PocketContext = createContext<PocketContextType>({
   pockets: [],
   activePocket: null,
+  totalAssets: 0,
   setActivePocket: () => {},
   loading: true,
   refresh: () => {},
@@ -49,6 +51,7 @@ export function PocketProvider({
   });
   const [loading, setLoading] = useState(initialPockets.length === 0);
   const [fetched, setFetched] = useState(initialPockets.length > 0);
+  const totalAssets = pockets.reduce((sum, p) => sum + (p.balance || 0), 0);
 
   const upsertPocket = (pocket: Pocket) => {
     setPockets(prev => {
@@ -103,7 +106,7 @@ export function PocketProvider({
   }, [status]);
 
   return (
-    <PocketContext.Provider value={{ pockets, activePocket, setActivePocket, loading, refresh, upsertPocket, removePocket }}>
+    <PocketContext.Provider value={{ pockets, activePocket, totalAssets, setActivePocket, loading, refresh, upsertPocket, removePocket }}>
       {children}
     </PocketContext.Provider>
   );

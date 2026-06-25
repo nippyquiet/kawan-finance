@@ -19,7 +19,7 @@ const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov
 type FilterPeriod = "all" | "thisMonth" | "lastMonth" | "future";
 
 export default function TransactionsPage() {
-  const { activePocket } = usePocket();
+  const { activePocket, refresh: refreshPockets, upsertPocket } = usePocket();
   const searchParams = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -203,6 +203,15 @@ export default function TransactionsPage() {
       attachmentType: form.attachmentType || null,
     };
 
+    const oldTx = editId ? transactions.find(tx => tx.id === editId) : null;
+    const oldEffect = oldTx ? (oldTx.type === "INCOME" ? oldTx.amount : -oldTx.amount) : 0;
+    const newEffect = form.type === "INCOME" ? amount : -amount;
+    const balanceDelta = editId ? newEffect - oldEffect : newEffect;
+
+    if (activePocket) {
+      upsertPocket({ ...activePocket, balance: (activePocket.balance || 0) + balanceDelta });
+    }
+
     if (editId) {
       setTransactions(prev => prev.map(tx => tx.id === editId ? { ...tx, ...optimisticTx, id: editId } : tx));
     } else {
@@ -217,9 +226,11 @@ export default function TransactionsPage() {
         : await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 
       if (!res.ok) throw new Error("Gagal menyimpan transaksi");
+      refreshPockets();
       load();
     } catch {
       setTransactions(previous);
+      if (activePocket) upsertPocket(activePocket);
       alert("Gagal menyimpan transaksi. Coba lagi ya.");
     } finally {
       setSaving(false);
@@ -228,13 +239,20 @@ export default function TransactionsPage() {
 
   const remove = async (id: number) => {
     const previous = transactions;
+    const tx = transactions.find(t => t.id === id);
+    const balanceDelta = tx ? (tx.type === "INCOME" ? -tx.amount : tx.amount) : 0;
+    if (activePocket && tx) {
+      upsertPocket({ ...activePocket, balance: (activePocket.balance || 0) + balanceDelta });
+    }
     setTransactions(prev => prev.filter(tx => tx.id !== id));
     try {
       const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Gagal menghapus transaksi");
+      refreshPockets();
       load();
     } catch {
       setTransactions(previous);
+      if (activePocket) upsertPocket(activePocket);
       alert("Gagal menghapus transaksi. Coba lagi ya.");
     }
   };

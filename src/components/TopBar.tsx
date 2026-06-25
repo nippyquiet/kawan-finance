@@ -9,7 +9,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { SearchOverlay } from "@/components/SearchOverlay";
 
 export function TopBar() {
-  const { pockets, activePocket, setActivePocket, refresh, upsertPocket } = usePocket();
+  const { pockets, activePocket, totalAssets, setActivePocket, refresh, upsertPocket } = usePocket();
   const { data: session } = useSession();
   const [showPicker, setShowPicker] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -91,7 +91,13 @@ export function TopBar() {
         )}
       </div>
 
-      <p className="text-3xl font-bold mt-1">{activePocket ? formatIDR(activePocket.balance) : "Rp 0"}</p>
+      <div className="mt-1">
+        <p className="text-[11px] uppercase tracking-wide text-zinc-400">Total Aset Semua Pocket</p>
+        <p className="text-3xl font-bold">{formatIDR(totalAssets)}</p>
+        <p className="text-xs text-zinc-400 mt-0.5">
+          {activePocket?.emoji || "👛"} {activePocket?.name || "Pocket aktif"}: {activePocket ? formatIDR(activePocket.balance) : "Rp 0"}
+        </p>
+      </div>
 
       {/* Create pocket modal */}
       {showCreate && (

@@ -9,6 +9,8 @@ type SessionUser = {
   image?: string | null;
 };
 
+type PocketRow = Awaited<ReturnType<typeof prisma.pocket.findFirst>> extends infer T ? NonNullable<T> : never;
+
 async function requireUser() {
   const session = await auth();
   const user = session?.user as SessionUser | undefined;
@@ -28,11 +30,32 @@ async function requireUser() {
   return { id: user.id, email: user.email };
 }
 
+async function attachComputedBalances(pockets: PocketRow[]) {
+  if (pockets.length === 0) return [];
+
+  const pocketIds = pockets.map(p => p.id);
+  const grouped = await prisma.transaction.groupBy({
+    by: ["pocketId", "type"],
+    where: { pocketId: { in: pocketIds } },
+    _sum: { amount: true },
+  });
+
+  const balances = new Map<number, number>();
+  for (const row of grouped) {
+    if (!row.pocketId) continue;
+    const current = balances.get(row.pocketId) || 0;
+    const amount = row._sum.amount || 0;
+    balances.set(row.pocketId, current + (row.type === "INCOME" ? amount : -amount));
+  }
+
+  return pockets.map(p => ({ ...p, balance: balances.get(p.id) || 0 }));
+}
+
 export async function GET() {
   const user = await requireUser();
   if (!user) return NextResponse.json([], { status: 401 });
 
-  const pockets = await prisma.pocket.findMany({
+  let pockets = await prisma.pocket.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "asc" },
   });
@@ -41,10 +64,10 @@ export async function GET() {
     const defaultPocket = await prisma.pocket.create({
       data: { name: "Utama", emoji: "👛", isDefault: true, userId: user.id },
     });
-    return NextResponse.json([defaultPocket]);
+    pockets = [defaultPocket];
   }
 
-  return NextResponse.json(pockets);
+  return NextResponse.json(await attachComputedBalances(pockets));
 }
 
 export async function POST(request: NextRequest) {
@@ -59,7 +82,9 @@ export async function POST(request: NextRequest) {
       userId: user.id,
     },
   });
-  return NextResponse.json(pocket, { status: 201 });
+
+  const [withBalance] = await attachComputedBalances([pocket]);
+  return NextResponse.json(withBalance, { status: 201 });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -83,7 +108,8 @@ export async function PATCH(request: NextRequest) {
     data: { name, emoji },
   });
 
-  return NextResponse.json(pocket);
+  const [withBalance] = await attachComputedBalances([pocket]);
+  return NextResponse.json(withBalance);
 }
 
 export async function DELETE(request: NextRequest) {

@@ -21,7 +21,7 @@ const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const { activePocket, loading: pocketLoading } = usePocket();
+  const { activePocket, totalAssets, loading: pocketLoading } = usePocket();
 
   const { data, isLoading } = useSWR<Analytics>(
     activePocket ? `/api/analytics?pocketId=${activePocket.id}` : null,
@@ -84,11 +84,10 @@ export default function Home() {
 
       {/* Net Worth Card */}
       <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 text-white">
-        <p className="text-sm text-blue-200">Total Kekayaan Bersih</p>
-        <p className="text-3xl font-bold mt-1">{formatIDR(data.allTime.net)}</p>
+        <p className="text-sm text-blue-200">Total Aset Semua Pocket</p>
+        <p className="text-3xl font-bold mt-1">{formatIDR(totalAssets)}</p>
         <div className="flex items-center gap-4 mt-3 text-xs text-blue-100">
-          <span className="flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> {formatIDR(data.allTime.income)}</span>
-          <span className="flex items-center gap-1"><ArrowDownRight className="w-3 h-3" /> {formatIDR(data.allTime.expense)}</span>
+          <span>{activePocket?.emoji || "👛"} {activePocket?.name || "Pocket aktif"}: {activePocket ? formatIDR(activePocket.balance) : "Rp 0"}</span>
         </div>
       </div>
 

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { usePocket } from "@/lib/PocketContext";
 import { formatIDR, formatDate, getTodayStr, formatNumberInput } from "@/lib/utils";
+import { useSearchParams } from "next/navigation";
 import { Trash2, Plus, X, Sparkles, FolderPlus, Pencil, Paperclip, FileText, Image as ImageIcon, Eye } from "lucide-react";
 
 type Category = { id: number; name: string; type: string; icon: string; color: string };
@@ -14,6 +16,8 @@ type Transaction = {
 const emptyForm = { amount: "", description: "", date: getTodayStr(), type: "EXPENSE", categoryId: "", attachmentPath: "", attachmentType: "" };
 
 export default function TransactionsPage() {
+  const { activePocket } = usePocket();
+  const searchParams = useSearchParams();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -32,9 +36,10 @@ export default function TransactionsPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   const load = () => {
+    if (!activePocket) return;
     setLoading(true);
     Promise.all([
-      fetch("/api/transactions").then(r => r.json()),
+      fetch(`/api/transactions?pocketId=${activePocket.id}`).then(r => r.json()),
       fetch("/api/categories").then(r => r.json()),
     ]).then(([txData, cats]) => {
       setTransactions(txData.transactions || []);
@@ -43,7 +48,14 @@ export default function TransactionsPage() {
     });
   };
 
-  useEffect(load, []);
+  useEffect(() => { load(); }, [activePocket]);
+
+  // Open form from FAB
+  useEffect(() => {
+    if (searchParams.get("add") === "1") {
+      setShowForm(true);
+    }
+  }, [searchParams]);
 
   const suggestCategory = (desc: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -125,6 +137,7 @@ export default function TransactionsPage() {
       categoryId: form.categoryId ? parseInt(form.categoryId) : null,
       attachmentPath: form.attachmentPath || null,
       attachmentType: form.attachmentType || null,
+      pocketId: activePocket?.id || null,
     };
 
     if (editId) {
@@ -154,7 +167,6 @@ export default function TransactionsPage() {
         </button>
       </div>
 
-      {/* Form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-zinc-200 p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -204,7 +216,6 @@ export default function TransactionsPage() {
             <option value="__NEW__" className="text-emerald-600 font-medium">+ Buat kategori baru...</option>
           </select>
 
-          {/* File Upload */}
           <div className="border border-dashed border-zinc-300 rounded-xl p-3">
             <input ref={fileRef} type="file" accept="image/*,.pdf" onChange={handleUpload} className="hidden" />
             {uploadedFile ? (
@@ -228,7 +239,6 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* Preview Modal */}
       {previewTx && previewTx.attachmentPath && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setPreviewTx(null)}>
           <div className="bg-white rounded-xl max-w-lg max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
@@ -237,7 +247,7 @@ export default function TransactionsPage() {
               <button onClick={() => setPreviewTx(null)}><X className="w-4 h-4" /></button>
             </div>
             {previewTx.attachmentType === "IMAGE" ? (
-              <img src={previewTx.attachmentPath} alt="Invoice" className="w-full" />
+              <img src={previewTx.attachmentPath} alt="" className="w-full" />
             ) : (
               <iframe src={previewTx.attachmentPath} className="w-full h-[60vh]" />
             )}
@@ -245,7 +255,6 @@ export default function TransactionsPage() {
         </div>
       )}
 
-      {/* List */}
       <div className="bg-white rounded-xl border border-zinc-200 divide-y divide-zinc-100">
         {loading ? (<p className="p-4 text-center text-zinc-400 text-sm">Memuat...</p>
         ) : transactions.length === 0 ? (<p className="p-4 text-center text-zinc-400 text-sm">Belum ada transaksi</p>

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/navbar";
+import { Suspense } from "react";
+import { PocketProvider } from "@/lib/PocketContext";
+import { TopBar } from "@/components/TopBar";
+import { BottomNav } from "@/components/BottomNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "KAWAN Finance",
   description: "Personal Finance Manager",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
 };
 
 export default function RootLayout({
@@ -25,11 +29,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen bg-zinc-50">
-        <Navbar />
-        <main className="max-w-6xl mx-auto px-4 py-6">
-          {children}
-        </main>
+      <body className="min-h-screen bg-zinc-50 pb-32">
+        <PocketProvider>
+          <TopBar />
+          <main className="max-w-lg mx-auto px-4 py-4">
+            <Suspense fallback={<div className="text-center py-8 text-sm text-zinc-400">Memuat...</div>}>
+              {children}
+            </Suspense>
+          </main>
+          <BottomNav />
+        </PocketProvider>
       </body>
     </html>
   );

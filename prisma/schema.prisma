@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Pocket {
+  id        Int           @id @default(autoincrement())
+  name      String
+  emoji     String        @default("👛")
+  balance   Int           @default(0)
+  isDefault Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  transactions Transaction[]
+  debts        Debt[]
+  budgets      Budget[]
+  investments  Investment[]
+}
+
 model Category {
   id        Int           @id @default(autoincrement())
   name      String
@@ -28,6 +42,8 @@ model Transaction {
   isTransfer      Boolean   @default(false)
   categoryId      Int?
   category        Category? @relation(fields: [categoryId], references: [id])
+  pocketId        Int?
+  pocket          Pocket?   @relation(fields: [pocketId], references: [id])
   attachmentPath  String?
   attachmentType  String?   // IMAGE or DOCUMENT
   createdAt       DateTime  @default(now())
@@ -42,6 +58,8 @@ model Debt {
   dueDate         DateTime?
   notes           String?
   isPaid          Boolean   @default(false)
+  pocketId        Int?
+  pocket          Pocket?   @relation(fields: [pocketId], references: [id])
   createdAt       DateTime  @default(now())
 }
 
@@ -53,6 +71,8 @@ model Investment {
   buyPrice     Float
   currentPrice Float
   notes        String?
+  pocketId     Int?
+  pocket       Pocket?   @relation(fields: [pocketId], references: [id])
   createdAt    DateTime  @default(now())
 }
 
@@ -63,6 +83,8 @@ model Budget {
   amount     Int       // budget limit in cents
   categoryId Int
   category   Category  @relation(fields: [categoryId], references: [id])
+  pocketId   Int?
+  pocket     Pocket?   @relation(fields: [pocketId], references: [id])
   createdAt  DateTime  @default(now())
 
   @@unique([month, year, categoryId])

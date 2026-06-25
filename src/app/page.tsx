@@ -1,123 +1,149 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePocket } from "@/lib/PocketContext";
 import { formatIDR, formatDate } from "@/lib/utils";
-import { Plus, ArrowRightLeft, PiggyBank, TrendingUp, Wallet } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import Link from "next/link";
 
 type Transaction = {
-  id: number;
-  amount: number;
-  description: string;
-  date: string;
-  type: string;
-  category?: { name: string; icon: string; color: string } | null;
+  id: number; amount: number; description: string; date: string;
+  type: string; category?: { id: number; name: string; icon: string } | null;
 };
 
-type DashboardData = {
-  transactions: Transaction[];
-  totalIncome: number;
-  totalExpense: number;
-  balance: number;
-  month: number;
-  year: number;
-};
+const MONTHS = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
 
-export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
+export default function Home() {
+  const { activePocket } = usePocket();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
 
   useEffect(() => {
-    fetch("/api/transactions").then((r) => r.json()).then(setData);
-  }, []);
+    if (!activePocket) return;
+    setLoading(true);
+    fetch(`/api/transactions?month=${month}&year=${year}&pocketId=${activePocket.id}`)
+      .then(r => r.json())
+      .then(data => {
+        setTransactions(data.transactions || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [activePocket, month, year]);
 
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" />
-      </div>
-    );
+  // Summary
+  const totalIncome = transactions.filter(t => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  const totalExpense = transactions.filter(t => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const netTotal = totalIncome - totalExpense;
+  const openingBalance = activePocket ? activePocket.balance - netTotal : 0;
+
+  // Group by date
+  const grouped: Record<string, Transaction[]> = {};
+  for (const t of transactions) {
+    const key = t.date.split("T")[0];
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(t);
   }
 
-  const recent = data.transactions.slice(0, 5);
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <Link
-          href="/transactions"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Transaksi Baru
+    <div className="space-y-5">
+      {/* Month tabs */}
+      <div className="flex gap-4 text-sm border-b border-zinc-100 pb-2">
+        {["BULAN LALU", "BULAN INI", "MENDATANG"].map((tab, i) => (
+          <button
+            key={tab}
+            className={`pb-2 -mb-0.5 font-medium ${
+              i === 1 ? "text-blue-600 border-b-2 border-blue-600" : "text-zinc-400"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Summary cards */}
+      <div className="bg-white rounded-2xl border border-zinc-100 p-4 space-y-2">
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">Saldo Awal</span>
+          <span className={openingBalance < 0 ? "text-red-500" : "text-green-500"}>
+            {formatIDR(openingBalance)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">Mutasi Masuk</span>
+          <span className="text-green-600 flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5" /> {formatIDR(totalIncome)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">Mutasi Keluar</span>
+          <span className="text-red-600 flex items-center gap-1">
+            <ArrowDownRight className="w-3.5 h-3.5" /> {formatIDR(totalExpense)}
+          </span>
+        </div>
+        <hr className="border-zinc-100" />
+        <div className="flex items-center justify-between font-semibold">
+          <span>Net Total</span>
+          <span className={netTotal >= 0 ? "text-green-600" : "text-red-600"}>
+            {netTotal >= 0 ? "+" : ""}{formatIDR(netTotal)}
+          </span>
+        </div>
+        <Link href="/transactions" className="block text-xs text-blue-500 mt-1 hover:underline">
+          Lihat laporan periode ini →
         </Link>
       </div>
 
-      {/* Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-zinc-200 p-4">
-          <div className="flex items-center gap-2 text-zinc-500 text-sm mb-2">
-            <Wallet className="w-4 h-4" />
-            Saldo
-          </div>
-          <p className={`text-xl font-bold ${data.balance >= 0 ? "text-green-600" : "text-red-600"}`}>
-            {formatIDR(data.balance)}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border border-zinc-200 p-4">
-          <div className="flex items-center gap-2 text-zinc-500 text-sm mb-2">
-            <TrendingUp className="w-4 h-4 text-green-500" />
-            Pemasukan
-          </div>
-          <p className="text-xl font-bold text-green-600">{formatIDR(data.totalIncome)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-zinc-200 p-4">
-          <div className="flex items-center gap-2 text-zinc-500 text-sm mb-2">
-            <ArrowRightLeft className="w-4 h-4 text-red-500" />
-            Pengeluaran
-          </div>
-          <p className="text-xl font-bold text-red-600">{formatIDR(data.totalExpense)}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-zinc-200 p-4">
-          <div className="flex items-center gap-2 text-zinc-500 text-sm mb-2">
-            <PiggyBank className="w-4 h-4 text-blue-500" />
-            Bulan
-          </div>
-          <p className="text-xl font-bold capitalize">
-            {new Date(data.year, data.month - 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" })}
-          </p>
-        </div>
-      </div>
-
-      {/* Recent Transactions */}
-      <div className="bg-white rounded-xl border border-zinc-200">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-100">
-          <h2 className="font-semibold">Transaksi Terbaru</h2>
-          <Link href="/transactions" className="text-sm text-blue-600 hover:underline">
-            Lihat Semua
+      {/* Transaction list */}
+      {loading ? (
+        <p className="text-zinc-400 text-sm text-center py-8">Memuat...</p>
+      ) : Object.keys(grouped).length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-3xl mb-2">📭</p>
+          <p className="text-zinc-400 text-sm">Belum ada transaksi bulan ini</p>
+          <Link href="/transactions?add=1" className="inline-block mt-3 bg-blue-600 text-white px-5 py-2 rounded-xl text-sm font-medium">
+            Tambah Transaksi
           </Link>
         </div>
-        <div className="divide-y divide-zinc-100">
-          {recent.length === 0 && (
-            <p className="p-4 text-zinc-400 text-sm text-center">Belum ada transaksi bulan ini</p>
-          )}
-          {recent.map((t) => (
-            <div key={t.id} className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                <span className="text-lg">{t.category?.icon || "📌"}</span>
-                <div>
-                  <p className="font-medium text-sm">{t.description}</p>
-                  <p className="text-xs text-zinc-400">{t.category?.name || "Tanpa kategori"} · {formatDate(t.date)}</p>
-                </div>
+      ) : (
+        Object.entries(grouped).map(([dateKey, txs]) => {
+          const d = new Date(dateKey + "T00:00:00");
+          const dayTotal = txs.reduce((s, t) => s + (t.type === "INCOME" ? t.amount : -t.amount), 0);
+          const isToday = dateKey === new Date().toISOString().split("T")[0];
+          const isYesterday = dateKey === new Date(Date.now() - 86400000).toISOString().split("T")[0];
+          const label = isToday ? "Hari Ini" : isYesterday ? "Kemarin" : `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+
+          return (
+            <div key={dateKey}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-medium text-zinc-500">{label}</h3>
+                <span className={`text-xs font-semibold ${dayTotal >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {dayTotal >= 0 ? "+" : ""}{formatIDR(dayTotal)}
+                </span>
               </div>
-              <p className={`font-semibold text-sm ${t.type === "INCOME" ? "text-green-600" : "text-red-600"}`}>
-                {t.type === "INCOME" ? "+" : "-"}{formatIDR(t.amount)}
-              </p>
+              <div className="bg-white rounded-2xl border border-zinc-100 divide-y divide-zinc-50">
+                {txs.map((tx) => (
+                  <div key={tx.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base ${
+                      tx.type === "INCOME" ? "bg-green-100" : "bg-blue-100"
+                    }`}>
+                      {tx.category?.icon || (tx.type === "INCOME" ? "💰" : "💳")}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{tx.description || "Tanpa keterangan"}</p>
+                      <p className="text-xs text-zinc-400">{tx.category?.name || "Lainnya"}</p>
+                    </div>
+                    <p className={`text-sm font-semibold shrink-0 ${tx.type === "INCOME" ? "text-green-600" : "text-red-600"}`}>
+                      {tx.type === "INCOME" ? "+" : "-"}{formatIDR(tx.amount)}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
-      </div>
+          );
+        })
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
   const year = searchParams.get("year");
+  const pocketId = searchParams.get("pocketId");
 
   const now = new Date();
   const m = month ? parseInt(month) : now.getMonth() + 1;
@@ -13,10 +14,13 @@ export async function GET(request: NextRequest) {
   const startDate = new Date(y, m - 1, 1);
   const endDate = new Date(y, m, 1);
 
+  const where: any = {
+    date: { gte: startDate, lt: endDate },
+  };
+  if (pocketId) where.pocketId = parseInt(pocketId);
+
   const transactions = await prisma.transaction.findMany({
-    where: {
-      date: { gte: startDate, lt: endDate },
-    },
+    where,
     include: { category: true },
     orderBy: { date: "desc" },
   });
@@ -50,6 +54,9 @@ export async function POST(request: NextRequest) {
       date: new Date(body.date),
       type: body.type,
       categoryId: body.categoryId || null,
+      pocketId: body.pocketId || null,
+      attachmentPath: body.attachmentPath || null,
+      attachmentType: body.attachmentType || null,
     },
     include: { category: true },
   });

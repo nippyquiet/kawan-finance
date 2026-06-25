@@ -4,44 +4,25 @@ import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { TopBar } from "@/components/TopBar";
 import { BottomNav } from "@/components/BottomNav";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect } from "react";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { status } = useSession();
-  const [mounted, setMounted] = useState(false);
+  const { data: session, status } = useSession();
   const isLogin = pathname === "/login";
 
-  // Prevent hydration flicker
-  useEffect(() => { setMounted(true); }, []);
-
-  // Redirect unauthenticated users from protected pages
+  // Only redirect from protected pages — never from login or auth pages
   useEffect(() => {
-    if (mounted && status === "unauthenticated" && !isLogin) {
+    if (status === "unauthenticated" && !isLogin && !pathname.startsWith("/api")) {
       router.replace("/login");
     }
-  }, [mounted, status, isLogin, router]);
+  }, [status, isLogin, pathname, router]);
 
-  // Login page — clean, no shell
-  if (isLogin) {
-    return <>{children}</>;
-  }
+  // Login page — clean, no chrome, no redirect logic
+  if (isLogin) return <>{children}</>;
 
-  // Still checking auth — minimal loading
-  if (!mounted || status === "loading") {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  // Not authenticated — should've been redirected, fallback
-  if (status === "unauthenticated") {
-    return null;
-  }
-
+  // Show app shell immediately (no loading spinner to avoid flicker)
   return (
     <div className="pb-32">
       <TopBar />

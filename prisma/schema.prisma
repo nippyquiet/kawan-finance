@@ -19,6 +19,7 @@ model Pocket {
   debts        Debt[]
   budgets      Budget[]
   investments  Investment[]
+  recurringTransactions RecurringTransaction[]
 }
 
 model Category {
@@ -31,6 +32,7 @@ model Category {
 
   transactions Transaction[]
   budgets      Budget[]
+  recurringTransactions RecurringTransaction[]
 }
 
 model Transaction {
@@ -88,4 +90,24 @@ model Budget {
   createdAt  DateTime  @default(now())
 
   @@unique([month, year, categoryId])
+}
+
+model RecurringTransaction {
+  id          Int       @id @default(autoincrement())
+  description String
+  amount      Int       // in cents
+  type        String    // INCOME or EXPENSE
+  frequency   String    // DAILY, WEEKLY, MONTHLY, YEARLY
+  startDate   DateTime
+  endDate     DateTime?
+  nextDate    DateTime?
+  isActive    Boolean   @default(true)
+  dayOfMonth  Int?      // for monthly: day of month (1-31)
+  dayOfWeek   Int?      // for weekly: day of week (0=Sun, 6=Sat)
+  categoryId  Int?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  pocketId    Int?
+  pocket      Pocket?   @relation(fields: [pocketId], references: [id])
+  notes       String?
+  createdAt   DateTime  @default(now())
 }
